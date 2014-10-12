@@ -17,6 +17,10 @@
 int main(int argc, const char** argv) {
 
     //TODO getOpt !
+    int getopt_long(int argc, char * const *argv, const char *optstring,
+         const struct option *longopts, int *longindex);
+
+    //TODO read file et pas de mmap -> on va remplir un buffer petit à petit...
 
 
     //TODO tout le reste...
