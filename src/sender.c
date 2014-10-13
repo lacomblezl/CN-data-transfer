@@ -4,7 +4,7 @@
  *  INGI2141 - Computer Networks
  *
  *  AUTHORS :   Lacomblez Loic (2756-11-00)
- *              Laurent Quentin (...)
+ *              Laurent Quentin (4834-11-00)
  *
  *  DATE : october 2014
  */
