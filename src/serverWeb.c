@@ -4,26 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <netdb.h>
 #include <netinet/in.h>
 
 #define BUFFSIZE 255
 void Die(char *mess) { perror(mess); exit(1); }
 
 
-//FIXME: why here ?
-struct addrinfo hints;
-struct addrinfo *server_addr = NULL;
-
-
 int main(int argc, char *argv[]) {
 
   int sock;
+  struct sockaddr_in echoserver;
   struct sockaddr_in echoclient;
   char buffer[BUFFSIZE];
-
-  // FIXME: remove that
-  unsigned int clientlen; //, serverlen;
+  unsigned int clientlen, serverlen;
   int received = 0;
 
   if (argc != 2) {
@@ -32,69 +25,21 @@ int main(int argc, char *argv[]) {
   }
 
 
-
-  //FIXME: big verbose test a virer !
-  //char print[INET6_ADDRSTRLEN];
-  //inet_ntop(AF_INET6, &in6addr_any,print,INET6_ADDRSTRLEN);
-  //printf("any:%s\n", print);
-
-
-
-  // FIXME: modif here with echoserver...
-  //struct sockaddr_in echoserver;
-
-  // Qques parametres passe a notre socket
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_protocol = IPPROTO_UDP;
-
-  int result;
-  if((result = getaddrinfo("::", argv[1], &hints,
-        &server_addr)) < 0) {
-    printf("Error resolving address %s - code %i",
-                                    argv[1], result);
-    freeaddrinfo(server_addr);
-    exit(EXIT_FAILURE);
-  }
-
-  //FIXME: Memory leak possible par getaddrinfo !
-
-
-
-
-
-
-
-
-
-
-
-
   /* Create the UDP socket */
-  //TODO: use IPv6
-  if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+  if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
     Die("Failed to create socket");
   }
-
-
-  // FIXME: remove all that shit !
-  /* Construct the server sockaddr_in structure
-  struct sockaddr_in echoserver;
-  memset(&echoserver, 0, sizeof(echoserver));       // Clear struct
-  echoserver.sin_family = AF_INET;                  // Internet/IP
-  echoserver.sin_addr.s_addr = htonl(INADDR_ANY);   // Any IP address
-  echoserver.sin_port = htons(atoi(argv[1]));       // server port
-  */
+  /* Construct the server sockaddr_in structure */
+  memset(&echoserver, 0, sizeof(echoserver));       /* Clear struct */
+  echoserver.sin_family = AF_INET;                  /* Internet/IP */
+  echoserver.sin_addr.s_addr = htonl(INADDR_ANY);   /* Any IP address */
+  echoserver.sin_port = htons(atoi(argv[1]));       /* server port */
 
   /* Bind the socket */
-  //FIXME: remove that
-  //serverlen = sizeof(echoserver);
-  if (bind(sock, server_addr->ai_addr, server_addr->ai_addrlen) < 0) {
+  serverlen = sizeof(echoserver);
+  if (bind(sock, (struct sockaddr *) &echoserver, serverlen) < 0) {
     Die("Failed to bind server socket");
   }
-
-  //FIXME: verbose print
-  printf("Socket bound... Nice !\n");
 
 
 
@@ -107,15 +52,8 @@ int main(int argc, char *argv[]) {
       &clientlen)) < 0) {
         Die("Failed to receive message");
       }
-
-      //FIXME: plus propre ?
-      char dst[INET_ADDRSTRLEN];
-      inet_ntop(AF_INET, &echoclient.sin_addr,dst,INET_ADDRSTRLEN);
-      printf("Client connected: %s\n", dst);
-
-
-
-
+      fprintf(stderr,
+      "Client connected: %s\n", inet_ntoa(echoclient.sin_addr));
       /* Send the message back to client */
       if (sendto(sock, buffer, received, 0,
         (struct sockaddr *) &echoclient,

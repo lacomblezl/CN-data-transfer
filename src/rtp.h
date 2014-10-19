@@ -14,9 +14,31 @@
  * descripteur de la connection.
  */
 
+ /*
+  * Structure decrivant le frame utilise par le protocole
+  */
+ typedef struct frame {
+   char header [4];        // 4 bytes = 32 bits
+   char payload [512];
+   char crc [4];
+ } rtp_frame;
+
+
 /*
- * Tente d'etablir une connection avec l'host specifie, et utilise errno en
+ * Tente d'etablir une connection avec l'host specifie, et retourne -1 en
  * cas d'erreur.
  *
  */
- //int connect()
+ int connect_up(char *address, char *port, struct **addrinfo addr);
+
+
+/*
+ * Tente d'etablir une connection avec l'host specifie.
+ */
+ int listen(char *address, char *port, struct **addrinfo addr);
+
+
+/*
+ * Envoie un segment a l'host connecte par la connection
+ */
+ int send(int connect_id, void *bytes);
