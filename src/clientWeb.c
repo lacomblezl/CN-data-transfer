@@ -8,7 +8,7 @@
 #include <netinet/in.h>
 
 #define BUFFSIZE 255
-#define IP_PROT PF_INET
+#define IP_PROT PF_INET6
 
 void Die(char *mess) { perror(mess); exit(1); }
 
