@@ -8,21 +8,21 @@
 #include <netinet/in.h>
 
 #define BUFFSIZE 255
+#define IP_PROT PF_INET
+
 void Die(char *mess) { perror(mess); exit(1); }
 
 struct addrinfo hints;
 struct addrinfo *server_addr = NULL;
-//TODO: struct addrinfo *client_addr = NULL;
+struct addrinfo *client_addr = NULL;
 
 
 int main(int argc, char *argv[]) {
 
   int sock;
 
-  //TODO: remove that !
-  struct sockaddr_in echoclient;
   char buffer[BUFFSIZE];
-  unsigned int echolen, clientlen;
+  unsigned int echolen;
   int received = 0;
 
   if (argc != 4) {
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Qques parametres passe a notre socket
-  hints.ai_family = PF_INET;
+  hints.ai_family = IP_PROT;
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_protocol = IPPROTO_UDP;
 
@@ -47,10 +47,10 @@ int main(int argc, char *argv[]) {
 
 
   /* Create the UDP socket */
-  if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+  if ((sock = socket(server_addr->ai_family, server_addr->ai_socktype,
+    server_addr->ai_protocol)) < 0) {
     Die("Failed to create socket");
   }
-
 
   /* Send the word to the server */
   echolen = strlen(argv[2]);
@@ -59,22 +59,32 @@ int main(int argc, char *argv[]) {
       Die("Mismatch in number of sent bytes");
   }
 
+  client_addr = (struct addrinfo *) calloc(1, sizeof(struct addrinfo));
+  if(client_addr == NULL) {
+    //TODO: meilleur message que ca !
+    printf("Error malloc client_addr\n");
+    exit(EXIT_FAILURE);
+  }
 
-    /* Receive the word back from the server */
-    fprintf(stdout, "Received: ");
-    clientlen = sizeof(echoclient);
-    if ((received = recvfrom(sock, buffer, BUFFSIZE, 0,
-      (struct sockaddr *) &echoclient,
-      &clientlen)) != echolen) {
-        Die("Mismatch in number of received bytes");
-      }
-      /* Check that client and server are using same socket
-      if (echoserver.sin_addr.s_addr != echoclient.sin_addr.s_addr) {
-        Die("Received a packet from an unexpected server");
-      }*/
-      buffer[received] = '\0';        /* Assure null terminated string */
-      printf("%s", buffer);
-      printf("\n");
-      close(sock);
-      exit(0);
-    }
+  // We specify some hints about the server addrinfo...
+  client_addr->ai_family = IP_PROT;
+  client_addr->ai_socktype = SOCK_DGRAM;
+  client_addr->ai_protocol = IPPROTO_UDP;
+
+  /* Receive the word back from the server */
+  fprintf(stdout, "Received: ");
+  if ((received = recvfrom(sock, buffer, BUFFSIZE, 0,
+    client_addr->ai_addr, &(client_addr->ai_addrlen))) != echolen) {
+      free(client_addr);
+      Die("Mismatch in number of received bytes");
+  }
+
+  buffer[received] = '\0';        /* Assure null terminated string */
+  printf("%s", buffer);
+  printf("\n");
+
+  free(client_addr);
+
+  close(sock);
+  exit(0);
+}
