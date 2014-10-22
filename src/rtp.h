@@ -23,6 +23,19 @@
    char crc [4];
  } rtp_frame;
 
+typedef struct control_str {
+  //TODO: all the infos needed by send and recvfrom
+  //TODO: + de quoi faire l'algo ?
+} control_struct;
+
+/*
+ * Initializes all the strcutures and the socket needed to communicate
+ * on top on UDP...
+ * It BINDS
+ * //TODO: initialize a thread to handle sent and received packets
+ * TODO: assume only for the receiver, then try to generalize
+ */
+int init_host(char *dest_addr, char *src_addr, control_struct *ctrl);
 
 /*
  * Tente d'etablir une connection avec l'host specifie, et retourne -1 en
