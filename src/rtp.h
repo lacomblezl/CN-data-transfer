@@ -14,35 +14,56 @@
  * retourne le descripteur du socket en le considerant conceptuellement comme le
  * descripteur de la connection.
  */
-/*
-*	Structure d'un paquet
-*/
+
 #include <stdint.h>
-typedef struct __attribute__((packed)){
+#include <netdb.h>
+
+/*
+ * Structure decrivant le frame utilise par le protocole
+ */
+typedef struct blah {
 	uint8_t type : 3;
 	uint8_t window : 5;
 	uint8_t seqnum : 8;
 	uint16_t length : 16;
 	uint8_t payload[512];
 	uint32_t crc;
-}packetstruct;
+} __attribute__((packed)) packetstruct;
+
 
 /*
- * Tente d'etablir une connection avec l'host specifie, et retourne -1 en
- * cas d'erreur.
+ * Enum qui permet de definir l'host comme sender ou receiver
+ */
+enum host_type {
+	sender = 0,
+	receiver = 1 };
+
+/*
+ * Initializes the socket needed to communicate on top on UDP.
+ * The type is used to specify if the socket should be bound or connected
+ * to address.
  *
+ * PARAMETERS :
+ *	- address : adrrinfo structure properly initialized for a given address.
+ *  - type : host_type defining if the socket will be used by a sender or a
+ *		receiver. If it's a sender, the socket is connected to 'address'.
+ *		Else, the socket is bound to 'address'.
+ *
+ * RETURN :
+ *	The identifier of the created socket. In case of error, -1 is returned and
+ *	errno is set appropriatly.
  */
- int connect_up(char *address, char *port, struct **addrinfo addr);
+int init_host(struct addrinfo *address, enum host_type type);
 
 
-/*
- * Tente d'etablir une connection avec l'host specifie.
+/* //TODO: corriger les options et specifier
+ * Tente d'etablir une connection fiable avec l'host specifie, et retourne
+* -1 en cas d'erreur.
  */
- int listen(char *address, char *port, struct **addrinfo addr);
+int connect_up(int sock_id);
 
-
-/*
- * Envoie un segment a l'host connecte par la connection
+/* TODO: implementer packet_valid
+ * Verifie si le packet recu est valide en verifiant son CRC...
+ * Retourne 1 si le packet est valide, 0 sinon.
  */
- int send(int connect_id, void *bytes);
-
+int packet_valid(packetstruct);
