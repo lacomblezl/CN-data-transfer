@@ -9,9 +9,13 @@ SEND_SRC=rtp.c clientMod.c
 SEND_OBJ= $(SEND_SRC:.c=.o)
 
 # Second executable
-RECV=serverMod
-RECV_SRC=rtp.c serverMod.c
+RECV=receiver
+RECV_SRC=rtp.c receiver.c
 RECV_OBJ= $(RECV_SRC:.c=.o)
+
+#RECV=serverMod
+#RECV_SRC=rtp.c serverMod.c
+#RECV_OBJ= $(RECV_SRC:.c=.o)
 
 all: $(SEND) $(RECV)
 

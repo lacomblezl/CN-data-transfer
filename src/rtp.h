@@ -38,7 +38,6 @@ enum host_type {
 	sender = 0,
 	receiver = 1 };
 
-
 /*
  * Initializes the socket needed to communicate on top on UDP.
  * The type is used to specify if the socket should be bound or connected
@@ -62,3 +61,9 @@ int init_host(struct addrinfo *address, enum host_type type);
 * -1 en cas d'erreur.
  */
 int connect_up(int sock_id);
+
+/* TODO: implementer packet_valid
+ * Verifie si le packet recu est valide en verifiant son CRC...
+ * Retourne 1 si le packet est valide, 0 sinon.
+ */
+int packet_valid(packetstruct);

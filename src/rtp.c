@@ -45,6 +45,7 @@ int init_host(struct addrinfo *address, enum host_type type) {
     return sock_id;
 }
 
+
 /* Establishes the connection as specified by the protocol */
 int connect_up(int sock_id) {
     //TODO: routine de negociation du sequence number...
