@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <string.h>
 
 #define BUFFSIZE 255
 #define IP_PROT PF_INET6
@@ -37,7 +38,15 @@ int main(int argc, char *argv[]) {
   hints.ai_protocol = IPPROTO_UDP;
 
   int result;
-  if((result = getaddrinfo("::", argv[1], &hints,
+  char listening_addr[8];
+  if (IP_PROT == PF_INET6) {
+      strcpy(listening_addr, "::");
+  }
+  else {
+      strcpy(listening_addr, "0.0.0.0");
+  }
+
+  if((result = getaddrinfo(listening_addr, argv[1], &hints,
         &server_addr)) < 0) {
     printf("Error resolving address %s - code %i",
                                     argv[1], result);

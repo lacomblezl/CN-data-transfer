@@ -29,35 +29,24 @@ typedef struct __attribute__((packed)){
 	uint32_t crc;
 } packetstruct;
 
-typedef struct control_str {
-  //TODO: all the infos needed by send and recvfrom
-  //TODO: + de quoi faire l'algo ?
-} control_struct;
-
-/*
- * Initializes all the strcutures and the socket needed to communicate
- * on top on UDP...
- * It BINDS
- * //TODO: initialize a thread to handle sent and received packets
- * TODO: assume only for the receiver, then try to generalize
- */
-int init_host(char *dest_addr, char *src_addr, control_struct *ctrl);
-
-/*
- * Tente d'etablir une connection avec l'host specifie, et retourne -1 en
- * cas d'erreur.
+/* === TODO: DONE BY LOIC ===
+ * Initializes the socket needed to communicate on top on UDP.
+ * One of the address MUST BE NULL, the other is the one used
+ * to bind/connect the socket.
  *
+ * PARAMETERS :
+ *	- dest_addr : adrrinfo concerning the destination address and
+ *				ports. Used to instanciate a Sender socket.
+ *  - src_addr : addrinfo defining the address and ports we are
+ *				listenning to. Used to instanciate a Receiver socket.
+ *
+ * RETURN :
+ *	The identifier of the created socket, or -1 in case of error.
  */
-int connect_up(char *address, char *port, struct **addrinfo addr);
+int init_host(struct addrinfo *dest_addr, struct addrinfo *src_addr);
 
-
-/*
- * Tente d'etablir une connection avec l'host specifie.
+/* //TODO: corriger les options et specifier
+ * Tente d'etablir une connection fiable avec l'host specifie, et retourne
+* -1 en cas d'erreur.
  */
-int listen(char *address, char *port, struct **addrinfo addr);
-
-
-/*
- * Envoie un segment a l'host connecte par la connection
- */
-int send(int connect_id, void *bytes);
+int connect_up(int sock_id);

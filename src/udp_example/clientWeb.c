@@ -10,12 +10,15 @@
 #define BUFFSIZE 255
 #define IP_PROT PF_INET6
 
-void Die(char *mess) { perror(mess); exit(1); }
-
 struct addrinfo hints;
 struct addrinfo *server_addr = NULL;
 struct addrinfo *client_addr = NULL;
 
+void Die(char *mess) {
+    perror(mess);
+    freeaddrinfo(server_addr);
+    exit(1);
+}
 
 int main(int argc, char *argv[]) {
 
@@ -52,10 +55,15 @@ int main(int argc, char *argv[]) {
     Die("Failed to create socket");
   }
 
+  /* Set the destination address used by the socket */
+  if(connect(sock, server_addr->ai_addr, server_addr->ai_addrlen)) {
+      Die("Failed to connect socket");
+  }
+
+
   /* Send the word to the server */
   echolen = strlen(argv[2]);
-  if (sendto(sock, argv[2], echolen, 0, server_addr->ai_addr,
-    server_addr->ai_addrlen) != echolen) {
+  if(send(sock, argv[2], echolen, 0) != echolen) {
       Die("Mismatch in number of sent bytes");
   }
 
