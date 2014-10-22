@@ -9,34 +9,43 @@
  *  DATE : october 2014
  */
 
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include "rtp.h"
 
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <sys/socket.h>
-
-
-struct addrinfo *src_address, *dest_address;
-
 /* initializes a connection's resources */
-int init_host(struct addrinfo *dest_addr, struct addrinfo *src_addr) {
-    /*TODO: needed by sender...
-    *   - a socket id (initialized !!!)
-    *   - a sending port and address (using CONNECT !!)
-    *   => ONLY A WELL CONFIGURED SOCKET NEEDED...
-    */
+int init_host(struct addrinfo *address, enum host_type type) {
 
-    /*TODO: needed by receiver...
-    *   - a socket id (initialized !!!)
-    *       -> define hints in global scope
-    *   - a listening port and address (using BIND !!)
-    *   => ONLY A WELL CONFIGURED SOCKET NEEDED...
-    */
+    // instanciate the socket
+    int sock_id = socket(address->ai_family, address->ai_socktype,
+      address->ai_protocol);
+    if(sock_id < 0) {
+        return -1;
+    }
+
+    /* If type is sender, connect socket to the destination */
+    if(type == sender) {
+        if(connect(sock_id, address->ai_addr, address->ai_addrlen)) {
+            close(sock_id);
+            return -1;
+        }
+    }
+
+    /* Else (type is receiver), bind socket to the address specified */
+    else {
+        if(bind(sock_id, address->ai_addr, address->ai_addrlen)) {
+            close(sock_id);
+            return -1;
+        }
+    }
+
+    return sock_id;
 }
 
-
+/* Establishes the connection as specified by the protocol */
 int connect_up(int sock_id) {
     //TODO: routine de negociation du sequence number...
     return 0;

@@ -16,34 +16,46 @@
  */
 
 #include <stdint.h>
+#include <netdb.h>
 
 /*
  * Structure decrivant le frame utilise par le protocole
  */
-typedef struct __attribute__((packed)){
+typedef struct blah {
 	uint8_t type : 3;
 	uint8_t window : 5;
 	uint8_t seqnum : 8;
 	uint16_t length : 16;
 	uint8_t payload[512];
 	uint32_t crc;
-} packetstruct;
+} __attribute__((packed)) packetstruct;
 
-/* === TODO: DONE BY LOIC ===
+
+/*
+ * Enum qui permet de definir l'host comme sender ou receiver
+ */
+enum host_type {
+	sender = 0,
+	receiver = 1 };
+
+
+/*
  * Initializes the socket needed to communicate on top on UDP.
- * One of the address MUST BE NULL, the other is the one used
- * to bind/connect the socket.
+ * The type is used to specify if the socket should be bound or connected
+ * to address.
  *
  * PARAMETERS :
- *	- dest_addr : adrrinfo concerning the destination address and
- *				ports. Used to instanciate a Sender socket.
- *  - src_addr : addrinfo defining the address and ports we are
- *				listenning to. Used to instanciate a Receiver socket.
+ *	- address : adrrinfo structure properly initialized for a given address.
+ *  - type : host_type defining if the socket will be used by a sender or a
+ *		receiver. If it's a sender, the socket is connected to 'address'.
+ *		Else, the socket is bound to 'address'.
  *
  * RETURN :
- *	The identifier of the created socket, or -1 in case of error.
+ *	The identifier of the created socket. In case of error, -1 is returned and
+ *	errno is set appropriatly.
  */
-int init_host(struct addrinfo *dest_addr, struct addrinfo *src_addr);
+int init_host(struct addrinfo *address, enum host_type type);
+
 
 /* //TODO: corriger les options et specifier
  * Tente d'etablir une connection fiable avec l'host specifie, et retourne
