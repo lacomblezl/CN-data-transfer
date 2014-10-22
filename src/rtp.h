@@ -1,3 +1,4 @@
+
 /*
  *  rtp.h (Reliable Transfer Protocol)
  *
@@ -14,14 +15,19 @@
  * descripteur de la connection.
  */
 
- /*
-  * Structure decrivant le frame utilise par le protocole
-  */
- typedef struct frame {
-   char header [4];        // 4 bytes = 32 bits
-   char payload [512];
-   char crc [4];
- } rtp_frame;
+#include <stdint.h>
+
+/*
+ * Structure decrivant le frame utilise par le protocole
+ */
+typedef struct __attribute__((packed)){
+	uint8_t type : 3;
+	uint8_t window : 5;
+	uint8_t seqnum : 8;
+	uint16_t length : 16;
+	uint8_t payload[512];
+	uint32_t crc;
+} packetstruct;
 
 typedef struct control_str {
   //TODO: all the infos needed by send and recvfrom
@@ -42,16 +48,16 @@ int init_host(char *dest_addr, char *src_addr, control_struct *ctrl);
  * cas d'erreur.
  *
  */
- int connect_up(char *address, char *port, struct **addrinfo addr);
+int connect_up(char *address, char *port, struct **addrinfo addr);
 
 
 /*
  * Tente d'etablir une connection avec l'host specifie.
  */
- int listen(char *address, char *port, struct **addrinfo addr);
+int listen(char *address, char *port, struct **addrinfo addr);
 
 
 /*
  * Envoie un segment a l'host connecte par la connection
  */
- int send(int connect_id, void *bytes);
+int send(int connect_id, void *bytes);
