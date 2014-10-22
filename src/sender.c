@@ -18,11 +18,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
 #define MAXSEQ 7
-
+#define TIMEOUT 5
 int main(int argc, const char** argv) {
 connect();
 //On ouvre le fichier
@@ -59,35 +61,46 @@ int selectiveRepeat(int fileDescriptor){
 		perror("Error allocating memory");
 		exit(EXIT_FAILURE);
 	}
-	
+	// déclaration de l'ensemble de lecture et du socket
+	// TODO : mettre des bonnes valeurs
+	fd_set readfs;
+	SOCKET sock;
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
 	while(size==PAYLOADSIZE){
-		if (bufferFill<windowSize){
-			//if (seq==unack){start_timer;}
+		//struct timerStart, timeAfter;
+		//gettimeofday(&timerStart,NULL);
+		timeval timeOut;
+		timeOut.tv_sec = TIMEOUT;
+		timeOut.tv_usec = 0;// TODO Valeurs du timeout
+		while (bufferFill<windowSize){// FIXME : timer pour chaque paquet
+			if (seq==unack){timerstart = clock();}
 			size = insert_in_buffer(fileDescriptor,bufPointer,seq,&bufferPos,&bufferFill);
 			send(bufPointer,bufferPos);
 			seq = (seq+1)%MAXSEQ;
 			bufferFill++;
 			bufferPos = (bufferPos+1)%windowSize;
 		}
-		
-	/*	if (timerexpires){
-			resend(allbuffer);
-			restart_timer;
+		int nfd = 0; // number of file descriptor that are set in readfs
+		//Vider readfs et mettre sock dedans
+		FD_ZERO(&readfs);
+		FD_SET(sock, &readfs);
+		//Erreur de select
+		if (nfd = select(sock+1,&readfs, NULL,NULL,&timeOut)<0){
+			perror("select");
+			exit(errno);
 		}
-		*/
-		//"Simulation" de la réception d'un acquis
-		printf("Un acquis a-t-il été reçu?");
-		int recvd = 0;
-		scanf("%d",&recvd);
-		//if recvd(acknowledgement){
-		if(recvd==1){
-			//Pour le test
-			printf("Quel est le numéro de séquence de l'acquis? ");
-			int ackedframe;
-			scanf("%d",&ackedframe);
-
+		//Timeout
+		if (nfd = 0){
+			for (i=0;i<bufferFill;i++)
+				send(bufPointer,(bufferPos+i)%MAXSEQ);
+				// Restart timer ???
+		}
+		//Acquis reçu
+		if (FD_ISSET(sock,readfs)){
+			char ackBuffer[HEADERSIZE+PAYLOADSIZE+CRCSIZE];
+			received = recv(socket,ackBuffer,HEADERSIZE+PAYLOADSIZE+CRCSIZE,0);// TODO conditions
+			/*int ackedframe;
 			if(ackedframe==unack){
 			//enlever les paquets acquis du buffer
 			unack=(ackedframe+1)%MAXSEQ;
@@ -96,13 +109,12 @@ int selectiveRepeat(int fileDescriptor){
 			/*if (unack==seq){
 				cancel_timer();
 			}
-			else{restart_timer();}*/
+			else{restart_timer();}
 			}
 			/*else if(notinsequence){
 				bufTable[i]=1;
 			}*/
 		}
-		else{sleep(1);}
 	}
 	free(bufPointer);
 	return EXIT_SUCCESS;
