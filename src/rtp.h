@@ -18,6 +18,10 @@
 #include <stdint.h>
 #include <netdb.h>
 
+#define PAYLOAD 512
+#define PTYPE_DATA 1
+#define PTYPE_ACK 2
+
 /*
  * Structure decrivant le frame utilise par le protocole
  */
@@ -26,7 +30,7 @@ typedef struct blah {
 	uint8_t window : 5;
 	uint8_t seqnum : 8;
 	uint16_t length : 16;
-	uint8_t payload[512];
+	uint8_t payload[PAYLOAD];
 	uint32_t crc;
 } __attribute__((packed)) packetstruct;
 
