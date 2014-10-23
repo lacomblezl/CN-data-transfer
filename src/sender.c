@@ -21,6 +21,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <stdbool.h>
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
@@ -40,12 +41,13 @@ struct addrinfo hints = {
 
 //FIXME: definition de window commune a send et receive non ?
 typedef struct slot {
-    uint8_t seqnum;
-    bool received;
+	uint8_t seqnum;
+	bool received;
 } window_slot;
 
-window_slot *window;                        
+window_slot window[BUFFSIZE];                        
 packetstruct send_buffer[BUFFSIZE];
+packetstruct *ackBuffer;
 int sock_id;
 int fileDescriptor;
 char *filename;
@@ -62,12 +64,13 @@ void Die(char* error_msg) {
 }
 /*
 * Insère les données avec le header et le CRC dans le buffer à la   bonne position
-* et retourne la taille des données insérées(sans header et CRC
+* et retourne la taille des données insérées(sans header et CRC)
 */
 int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	if (*bufferFill>=BUFFSIZE){
 		Die("Da buffer is-a full");
 	}
+	// Remplissage du buffer
 	void *payloadaddress = &(send_buffer[*bufferPos].payload);
 	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
 	send_buffer[*bufferPos].type = PTYPE_ACK;
@@ -76,7 +79,10 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	send_buffer[*bufferPos].length = size;
     	send_buffer[*bufferPos].crc = 0;
 	//FIXME changer le CRC
-	
+	// Mise à jour des infos de la window
+	window[*bufferPos].seqnum = *seq;
+	window[*bufferPos].received = false;
+	// Mise à jour des variables de description de la fenêtre et de la séquence
 	*bufferPos = (*bufferPos+1)%BUFFSIZE;
 	*bufferFill = *bufferFill+1;
 	*seq = (*seq+1)%MAXSEQ;
@@ -100,7 +106,44 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id
 	if(lensent != sizeof(packetstruct)) {
 		Die("Mismatch in number of sent bytes");
 	}
+	// TODO : Wait if receiver unavailable?
 	return lensent;
+}
+/*
+* Function that removes a packet from the buffer
+*/
+int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ackedframe){
+	if(seq<ackedframe){
+		Die("Ack is out of the window");
+	}
+	int diff = (seq-ackedframe+MAXSEQ)%MAXSEQ;
+	if(diff>*bufferFill){
+		Die("Yo, you buffers too small fo da shit man(seriously, ack out of window)");
+	}
+	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
+	window[packetbufferindex].received = true;
+	int i = 0;
+	while((window[(bufferPos-*bufferFill+i+BUFFSIZE)%BUFFSIZE].received) && i<*bufferFill){
+			//enlever les paquets acquis du buffer
+			*unack=(*unack+1)%MAXSEQ;
+			*bufferFill=*bufferFill-1;
+	}
+			/*if (unack==seq){
+				cancel_timer();
+			}
+			else{restart_timer();}
+			}*/
+	// TODO : Bloody timers
+	return 1;
+}
+/*
+* Vérifie la validité de l'acquis et retourne le numéro de séquence
+*/
+int processAck(){
+	// TODO : Verifier le CRC
+	int ackseq = ackBuffer->seqnum;
+	return ackseq;
+
 }
 
 //Fonction qui gère l'envoi des paquets
@@ -153,26 +196,12 @@ int selectiveRepeat(){
 		}
 		//Acquis reçu
 		if (FD_ISSET(sock_id,&readfs)){
-			char ackBuffer[HEADERSIZE+PAYLOADSIZE+CRCSIZE];
 			int received;
 			if((received = recv(sock_id,ackBuffer,HEADERSIZE+PAYLOADSIZE+CRCSIZE,0))<0){
 				Die("No packet received");
 			}
-			
-			/*int ackedframe;
-			if(ackedframe==unack){
-			//enlever les paquets acquis du buffer
-			unack=(ackedframe+1)%MAXSEQ;
-			bufferPos = (bufferPos+1)%windowSize;
-			bufferFill--;
-			if (unack==seq){
-				cancel_timer();
-			}
-			else{restart_timer();}
-			}
-			else if(notinsequence){
-				bufTable[i]=1;
-			}*/
+			int ackedframe = processAck();
+			remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
 		}
 	}
 	return EXIT_SUCCESS;
