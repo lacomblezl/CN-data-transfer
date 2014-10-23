@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
     int sock_id;                        // socket descriptor
     struct sockaddr_storage src_host;   // source host emitting the packets
     packetstruct tmp_packet;            // stores the just received packet
-    uint8_t lastack;                    // last in-sequence acknowledge packet
+    uint8_t lastack=0;                  // last in-sequence acknowledge packet
 
     int opt;
     map_options(argc, argv, &opt);
