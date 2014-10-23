@@ -4,8 +4,8 @@ LDFLAGS=
 OBJ = $(wildcard *.o)
 
 # First executable
-SEND=clientMod
-SEND_SRC=rtp.c clientMod.c
+SEND=sender
+SEND_SRC=rtp.c sender.c
 SEND_OBJ= $(SEND_SRC:.c=.o)
 
 # Second executable

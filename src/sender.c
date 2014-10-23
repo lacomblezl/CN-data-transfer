@@ -26,9 +26,10 @@
 #define CRCSIZE 4
 #define MAXSEQ 7
 #define TIMEOUT 5
+#define BUFFSIZE    3              // size of the buffer
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
-#define BUFFSIZE 10                 // size of the receiving buffer
+
 
 
 struct addrinfo *address = NULL;    // address & port we're listening to
@@ -37,10 +38,21 @@ struct addrinfo hints = {
     .ai_socktype = SOCK_DGRAM,
     .ai_protocol = IPPROTO_UDP };
 
-int sock_id;                        // The socket used by the program
+//FIXME: definition de window commune a send et receive non ?
+typedef struct slot {
+    uint8_t seqnum;
+    bool received;
+} window_slot;
 
+window_slot *window;                        
+packetstruct send_buffer[BUFFSIZE];
+int sock_id;
+int fileDescriptor;
+char *filename;
 
-// Cleanly exits the application in case of error
+/*
+* Cleanly exits the application in case of error
+*/
 void Die(char* error_msg) {
     perror(error_msg);
     freeaddrinfo(address);
@@ -48,83 +60,78 @@ void Die(char* error_msg) {
     //TODO: close(fd);
     exit(EXIT_FAILURE);
 }
-/* Insère les données avec le header et le CRC dans le buffer à la bonne position
- et retourne la taille des données insérées(sans header et CRC
+/*
+* Insère les données avec le header et le CRC dans le buffer à la   bonne position
+* et retourne la taille des données insérées(sans header et CRC
 */
-int insert_in_buffer(int fileDescriptor,void *bufPointer,int seq,int *bufferPos,int *bufferFill){
-	void *address = bufPointer + (*bufferPos)*(HEADERSIZE	+PAYLOADSIZE+CRCSIZE);
-	ssize_t size = read(fileDescriptor, address, PAYLOADSIZE);
-	if(size<PAYLOADSIZE){
-		int i;
-		for(i = size;i<PAYLOADSIZE;i++){
-			*((char*)(address+i)) = 0;
-		}
+int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
+	if (*bufferFill>=BUFFSIZE){
+		Die("Da buffer is-a full");
 	}
-	strcpy(bufPointer,"aaaa");
-	strcpy(address+PAYLOADSIZE,"bbb");
+	void *payloadaddress = &(send_buffer[*bufferPos].payload);
+	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
+	send_buffer[*bufferPos].type = PTYPE_ACK;
+	send_buffer[*bufferPos].window = BUFFSIZE;
+	send_buffer[*bufferPos].seqnum = *seq;
+	send_buffer[*bufferPos].length = size;
+    	send_buffer[*bufferPos].crc = 0;
+	//FIXME changer le CRC
+	
+	*bufferPos = (*bufferPos+1)%BUFFSIZE;
+	*bufferFill = *bufferFill+1;
+	*seq = (*seq+1)%MAXSEQ;
+	// TODO changer le contenu de window
 	return size;
 }
-/*int connect(){
-printf("You are connected");
-}*/
-
-//Fonction qui envoie un paquet
-int supersend(void *bufPointer,int bufferPos, int sock_id,struct addrinfo *destaddr){
-	void *bufaddress = bufPointer + (bufferPos)*(HEADERSIZE+PAYLOADSIZE+CRCSIZE);
-	/* Send the word to the server */
-	int echolen = HEADERSIZE+PAYLOADSIZE+CRCSIZE;
-	ssize_t lensent = send(sock_id, bufaddress, echolen-1, 0);
+/*
+ * Fonction qui envoie un paquet avec l'index paquetseq
+*/
+int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id){
+	int diff = (seq-paquetseq+MAXSEQ)%MAXSEQ;
+	if(diff>bufferFill){
+		Die("Yo, you buffers too small fo da shit man");
+	}
+	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
+	void *bufaddress = &send_buffer[packetbufferindex];
+	// Send the word to the server
+	ssize_t lensent = send(sock_id, bufaddress, sizeof(packetstruct), 0);
 	printf("%d\n",(int)lensent);
-	if(lensent != echolen) {
+	printf("%s\n",((char *)bufaddress)+4);
+	if(lensent != sizeof(packetstruct)) {
 		Die("Mismatch in number of sent bytes");
 	}
 	return lensent;
 }
-/*
-int* crc(){
-
-	}
-int disconnect(){
-	printf("You are disconnected");
-}*/
 
 //Fonction qui gère l'envoi des paquets
-int selectiveRepeat(int fileDescriptor){
+int selectiveRepeat(){
 	// Paramètres
-	int windowSize = 3; //Taille de la fenêtre
-	//int maxseq = 7;// Taille de la sequence de nombre à suivre
 	
 	int seq = 0;//Numéro de séquence du prochain frame à envoyer
 	int unack = 0;//Numéro de séquence du dernier acquis reçu
 	int bufferFill = 0;//Nombres de frames dans le buffer
 	int bufferPos = 0; // La position dans le buffer du prochain paquet à remplacer
 
-	//Allocation de mémoire pour le buffer
-	void *bufPointer = malloc(sizeof(char)*(HEADERSIZE+PAYLOADSIZE+CRCSIZE)*windowSize);
-	if (bufPointer == NULL){
-		perror("Error allocating memory");
-		exit(EXIT_FAILURE);
-	}
-	// déclaration de l'ensemble de lecture et du socket
 	// TODO : mettre des bonnes valeurs
-	fd_set readfs;
+
+	fd_set readfs; //Set de filedescriptors utilisé par select
 	
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
+	printf("Debut de la boucle while\n");
 	while(size==PAYLOADSIZE){
-		//struct timerStart, timeAfter;
-		//gettimeofday(&timerStart,NULL);
+		printf("Un passage de la boucle\n");
 		struct timeval timeOut;
 		timeOut.tv_sec = TIMEOUT;
 		timeOut.tv_usec = 0.0;// TODO Valeurs du timeout
-		while (bufferFill<windowSize && size==(PAYLOADSIZE+HEADERSIZE+CRCSIZE)){// FIXME : timer pour chaque paquet
+		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE){// FIXME : timer pour chaque paquet
 			if (seq==unack){//Start timer
-}
-			size = insert_in_buffer(fileDescriptor,bufPointer,seq,&bufferPos,&bufferFill);
-			supersend(bufPointer,bufferPos,sock_id,address);
-			seq = (seq+1)%MAXSEQ;
-			bufferFill++;
-			bufferPos = (bufferPos+1)%windowSize; // Vérifier que le timeout n'a pas été dépassé
+			}
+			size = insert_in_buffer(&seq,&bufferPos,&bufferFill);
+			supersend(bufferPos,bufferFill,seq,seq-1,sock_id);
+			//FIXME : verbose print
+			printf("Packet Sent\n");
+			// TODO : Vérifier que le timeout n'a pas été dépassé
 		}
 		int nfd = 0; // number of file descriptor that are set in readfs
 		//Vider readfs et mettre sock dedans
@@ -137,9 +144,10 @@ int selectiveRepeat(int fileDescriptor){
 		}
 		//Timeout
 		if (nfd == 0){
+			printf("Timeout reached\n");
 			int i;
 			for (i=0;i<bufferFill;i++){
-				supersend(bufPointer,(bufferPos+i)%MAXSEQ,sock_id,address);
+				supersend(bufferPos,bufferFill,seq,seq-bufferFill+i,sock_id);
 				// Restart timer ???
 			}
 		}
@@ -167,7 +175,6 @@ int selectiveRepeat(int fileDescriptor){
 			}*/
 		}
 	}
-	free(bufPointer);
 	return EXIT_SUCCESS;
 }
 
@@ -177,28 +184,30 @@ int selectiveRepeat(int fileDescriptor){
 
 int main(int argc, const char** argv) {
 	//On ouvre le fichier
-	char* filename = "loremipsum.txt";
-	int fileDescriptor = open(filename, O_RDONLY);
+	filename = "loremipsum.txt";
+	fileDescriptor = open(filename, O_RDONLY);
 	if (fileDescriptor<0){
 		perror("Error opening file");
 		exit(EXIT_FAILURE);
 	}
 	//TODO: getOpt !
 	    /* Provisoire... */
-	    const char *port = argv[1];
+	//TODO : si l'addresse n'est pas valide
+	const char *addr_str = argv[1];
+	const char *port = argv[2];
 	
 	
 	/* Resolve the address passed to the program */
 	//FIXME: faire dependre de argv !
 	int result;
-	if((result = getaddrinfo("::", port, &hints, &address)) < 0) {
-		printf("Error resolving address %s - code %i", argv[1], result);
+	if((result = getaddrinfo(addr_str, port, &hints, &address)) < 0) {
+		printf("Error resolving address %s - code %i\n", argv[0], result);
 		freeaddrinfo(address);
 		exit(EXIT_FAILURE);
 	}
 
 
-	/* initialize the socket used by the receiver */
+	/* initialize the socket used by the sender */
 	sock_id = init_host(address, sender);
 	if(sock_id == -1) {
 		perror("Error creating socket");
@@ -209,12 +218,13 @@ int main(int argc, const char** argv) {
 	// FIXME: verbose print
     printf("Socket initialization passed !\n");
 
-	selectiveRepeat(fileDescriptor);
+	selectiveRepeat();
 	int err = close(fileDescriptor);
 	if (err <0){
 		perror("Error closing file");
 		exit(EXIT_FAILURE);
 	}
+	freeaddrinfo(address);
 	close(sock_id);
 	return EXIT_SUCCESS;
 }
