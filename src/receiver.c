@@ -121,10 +121,10 @@ int idx_in_window(uint8_t seqnumb) {
 void acknowledge(uint8_t seqnumb, packetstruct *packet) {
 
     packet->type = PTYPE_ACK;
-    packet->window = BUFFSIZE; //TODO: quoi mettre
+    packet->window = BUFFSIZE; //TODO: quoi mettre ?
     packet->seqnum = seqnumb;
     packet->length = 0;
-    //FIXME: on neglige le payload ? En soi, useless ! packet->payload = NULL;
+    //FIXME: mettre le payload a zero !!
     packet->crc = 0; //TODO: compute CRC
 }
 
