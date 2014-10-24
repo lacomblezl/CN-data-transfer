@@ -25,9 +25,9 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
-#define MAXSEQ 7
+#define MAXSEQ 20
 #define TIMEOUT 5
-#define BUFFSIZE    3              // size of the buffer
+#define BUFFSIZE    10              // size of the buffer
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 
