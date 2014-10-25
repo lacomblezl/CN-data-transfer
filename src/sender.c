@@ -78,7 +78,8 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	send_buffer[*bufferPos].window = BUFFSIZE;
 	send_buffer[*bufferPos].seqnum = *seq;
 	send_buffer[*bufferPos].length = size;
-    	send_buffer[*bufferPos].crc = 0;
+	send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
+    	send_buffer[*bufferPos].crc = htonl(0);
 	//FIXME changer le CRC
 	// Mise à jour des infos de la window
 	window[*bufferPos].seqnum = *seq;
@@ -101,10 +102,11 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id
 	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
 	void *bufaddress = &send_buffer[packetbufferindex];
 	// Send the word to the server
-	ssize_t lensent = send(sock_id, bufaddress, ((packetstruct *)bufaddress)->length+8, 0); // Taille donnée par length +8
+	int lentosend = ntohs(((packetstruct *)bufaddress)->length)+8;
+	ssize_t lensent = send(sock_id, bufaddress, lentosend, 0); // Taille donnée par length +8
 	// FIXME Verbose print
-	printf("Paquet sent with sequence number %d \n",window[packetbufferindex].seqnum);
-	if(lensent != ((packetstruct *)bufaddress)->length+8) {
+	printf("Paquet sent with sequence number %d, %d bytes \n",window[packetbufferindex].seqnum,(int)lensent);
+	if(lensent != (lentosend)) {
 		Die("Mismatch in number of sent bytes");
 	}
 	// TODO : Wait if receiver unavailable?
@@ -207,7 +209,6 @@ int selectiveRepeat(){
 				Die("No packet received");
 			}
 			int ackedframe = processAck();
-			
 			remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
 		}
 		else{
