@@ -28,6 +28,7 @@ int init_host(struct addrinfo *address, enum host_type type) {
 
     /* If type is sender, connect socket to the destination */
     if(type == sender) {
+	printf("Address : %s\n",(address->ai_addr)->sa_data);
         if(connect(sock_id, address->ai_addr, address->ai_addrlen)) {
             close(sock_id);
             return -1;
@@ -36,7 +37,7 @@ int init_host(struct addrinfo *address, enum host_type type) {
 
     /* Else (type is receiver), bind socket to the address specified */
     else {
-        if(bind(sock_id, address->ai_addr, address->ai_addrlen)) {
+        if(bind(sock_id, address->ai_addr, address->ai_addrlen)) {//||connect(sock_id, address->ai_addr, address->ai_addrlen)
             close(sock_id);
             return -1;
         }

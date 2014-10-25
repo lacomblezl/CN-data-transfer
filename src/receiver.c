@@ -15,20 +15,25 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <getopt.h>
-
+#include <sys/socket.h>
+#include <sys/types.h>
 #include "rtp.h"
 
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 #define BUFFSIZE 10                 // size of the receiving buffer
 #define MAXSEQ 20
+#define PAYLOADSIZE 512
+#define HEADERSIZE 4
+#define CRCSIZE 4
 
 struct addrinfo *address = NULL;    // address & port we're listening to
 struct addrinfo hints = {
     .ai_family = IP_PROT,
     .ai_socktype = SOCK_DGRAM,
     .ai_protocol = IPPROTO_UDP };
-
+struct sockaddr_storage src_host;   // source host emitting the packets
+socklen_t src_len;      // size of the source address
 //FIXME: definition de window commune a send et receive non ?
 typedef struct slot {
     uint8_t seqnum;
@@ -64,7 +69,7 @@ void die(char *error_msg) {
  * Updates the window accordingly to accept new sequence numbers.
  * Sets lastack to its new value.
  */
-int flush_frames(int fd, uint8_t *lastack, int *bufferPos) {
+int flush_frames(int fd, uint8_t *lastack, int *bufferPos,int *bufferFill) {
 
     // iterates over the sliding window slots
     
@@ -76,6 +81,7 @@ int flush_frames(int fd, uint8_t *lastack, int *bufferPos) {
         	}
 		*lastack = (*lastack+1)%MAXSEQ;
 		*bufferPos = (*bufferPos+1)%BUFFSIZE;
+		*bufferFill = *bufferFill-1;
 		window[*bufferPos].received = 0;
 		window[*bufferPos].seqnum = (window[*bufferPos].seqnum+BUFFSIZE)%MAXSEQ;
 		i++;
@@ -104,16 +110,37 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
  * Generates an rtp packet acknowledging the sequence number seqnumb
  * TODO: je fais quoi de la partie window ?
  */
-void acknowledge(uint8_t seqnumb, packetstruct *packet) {
+void acknowledge(int lastack, packetstruct *packet) {
 
     packet->type = PTYPE_ACK;
     packet->window = BUFFSIZE; //TODO: quoi mettre ?
-    packet->seqnum = seqnumb;
+    packet->seqnum = lastack;
     packet->length = 0;
     //FIXME: mettre le payload a zero !!
     packet->crc = 0; //TODO: compute CRC
+	
+	ssize_t lensent = sendto(sock_id,packet,sizeof(packetstruct),0,(struct sockaddr *)&src_host,src_len);
+	if(lensent != sizeof(packetstruct)) {
+		die("Mismatch in number of sent bytes");
+	}
+	//printf("\nAcknowledgement sent with seq number %d\n",lastack);
 }
-
+/*
+* 1 si tout est reçu, 0 sinon
+*/
+int isReceived(ssize_t size, int bufferFill, int bufferPos){
+int i =0;
+	int allackedwindow = 1;
+	printf("\nValeur de bufferFill : %d \n Valeur de size : %d \n Valeur de size!=PAYL : %d \n",bufferFill,(int)size,(size!=PAYLOADSIZE));
+	while(i<bufferFill && allackedwindow){
+		allackedwindow = (window[(bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE].received);
+		i++;
+		//printf("Valeur de allacked : %d\n",allackedwindow);
+	}
+	int istransm = (size!=sizeof(packetstruct)) && allackedwindow;
+	printf("Istransmitted ? : %d\n",istransm);
+return istransm;
+}
 /*
  * Formate les options passees au programme
  */
@@ -152,8 +179,7 @@ void map_options(int argc, char **argv, int *opts) {
 
 int main(int argc, char* argv[]) {
 
-    int sock_id;                        // socket descriptor
-    struct sockaddr_storage src_host;   // source host emitting the packets
+    
     packetstruct tmp_packet;            // stores the just received packet
     uint8_t lastack=MAXSEQ-1;                  // last in-sequence acknowledge packet
 	int bufferPos = 0;		//Corresponding position in the buffer
@@ -213,14 +239,15 @@ int main(int argc, char* argv[]) {
     // Quand on sort de la, la window est initialisee avec tous les seq numb
     // attendus ! Pour l'instant, on va tester en connectionless.
 
-
+	int bufferFill=0;
     int idx;                // index used serveral times in each iteration
-    socklen_t src_len;      // size of the source address
-    while(1) {
+    ssize_t size =sizeof(packetstruct);
+    while(!isReceived(size,bufferFill,bufferPos)) {
         /* blocking receive - we are waiting for a frame */
         src_len = sizeof(src_host);
-        if(recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
-            (struct sockaddr*) &src_host, &(src_len)) < 0) {
+        if((size=recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
+            (struct sockaddr*) &src_host, &(src_len))) < 0) {
+	// TODO : src_host a une valeur?
             //free(window);
             die("Error while receiving packet");
         }
@@ -235,22 +262,27 @@ int main(int argc, char* argv[]) {
         // Is the sequence number in the receive window ?
 	//printf("Avant idx_in_window\n");
         if((idx = idx_in_window(tmp_packet.seqnum,lastack,bufferPos)) != -1) {
-	//printf("\nidx_in_window = %d\n",idx);
-            recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
+	//printf("Value of lastack before flush_frames : %d\n",lastack);
+	// flush packets and update window/lastack
+	recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
 	//printf("%s\n",(char *)&(recv_buffer[idx].payload));
 	// TODO : gérer un paquet en dehors de la fenêtre
             window[idx].received = true;    // mark the frame as received
-        }
-        // flush packets and update window/lastack
-        if(flush_frames(fd, &lastack,&bufferPos)) {
+	bufferFill++;
+        if(flush_frames(fd, &lastack,&bufferPos,&bufferFill)) {
             die("Error writing packets to file");
         }
+
+		acknowledge(lastack,&recv_buffer[idx]);
+        }
+        
 
         //TODO: send ack(lastack)
         /*if(sendto(sock_id,... )) {
             die("Error while sending acknowledgement");
         }*/
 	}
+	printf("File successfully received\n");
 
 	freeaddrinfo(address);
 	close(sock_id);
