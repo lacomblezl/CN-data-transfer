@@ -111,7 +111,6 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
  * TODO: je fais quoi de la partie window ?
  */
 void acknowledge(int lastack, packetstruct *packet) {
-
 	packet->type = PTYPE_ACK;
 	packet->window = BUFFSIZE; //TODO: quoi mettre ?
 	packet->seqnum = lastack+1; // prochain numéro de séquence attendu
@@ -130,14 +129,14 @@ void acknowledge(int lastack, packetstruct *packet) {
 int isReceived(ssize_t size, int bufferFill, int bufferPos){
 int i =0;
 	int allackedwindow = 1;
-	printf("\nValeur de bufferFill : %d \n Valeur de size : %d \n Valeur de size!=PAYL : %d \n",bufferFill,(int)size,(size!=PAYLOADSIZE));
+	//printf("\nValeur de bufferFill : %d \n Valeur de size : %d \n Valeur de size!=PAYL : %d \n",bufferFill,(int)size,(size!=PAYLOADSIZE));
 	while(i<bufferFill && allackedwindow){
 		allackedwindow = (window[(bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE].received);
 		i++;
 		//printf("Valeur de allacked : %d\n",allackedwindow);
 	}
 	int istransm = (size!=sizeof(packetstruct)) && allackedwindow;
-	printf("Istransmitted ? : %d\n",istransm);
+	//printf("Istransmitted ? : %d\n",istransm);
 return istransm;
 }
 /*
@@ -255,6 +254,7 @@ int main(int argc, char* argv[]) {
 			acknowledge(lastack,&recv_buffer[idx]);
         	}
 	}
+	sleep(10);// FIXME : Comment terminer l'envoi
 	if(verbose){
 		printf("File successfully received\n");
 	}
