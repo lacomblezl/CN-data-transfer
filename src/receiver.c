@@ -17,6 +17,9 @@
 #include <getopt.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <fcntl.h>
+#include <zlib.h>
+
 #include "rtp.h"
 
 
@@ -44,7 +47,7 @@ window_slot window[BUFFSIZE];                // The sliding window
 int sock_id;                        // The socket used by the program
 packetstruct recv_buffer[BUFFSIZE]; // receiving buffer
 int fd;                             // file descriptor for the output file
-char *filename;                     // file name for the output
+char *filename = NULL;              // file name for the output
 bool verbose;                       // verbose flag to print debug messages
 
 
@@ -53,13 +56,13 @@ void usage() {
     printf("usage:\n");
     printf("\t./receiver [--verbose] [--file filename] hostname port\n\n");
 }
-	
+
 // Cleanly exits the application in case of error
 void die(char *error_msg) {
     perror(error_msg);
     freeaddrinfo(address);
     close(sock_id);
-    //TODO: close(fd);
+    close(fd);
     exit(EXIT_FAILURE);
 }
 
@@ -72,13 +75,13 @@ void die(char *error_msg) {
 int flush_frames(int fd, uint8_t *lastack, int *bufferPos,int *bufferFill) {
 
     // iterates over the sliding window slots
-    
+
 	uint8_t i=0;
 	while(i<BUFFSIZE && window[(*bufferPos)%BUFFSIZE].received){
 		int length = ntohs(recv_buffer[*bufferPos].length);
         	if(write(fd, &(recv_buffer[*bufferPos].payload), length) != length) {
             		return -1;
-        	}	
+        	}
 		*lastack = (*lastack+1)%MAXSEQ;
 		*bufferPos = (*bufferPos+1)%BUFFSIZE;
 		*bufferFill = *bufferFill-1;
@@ -117,7 +120,7 @@ void acknowledge(int lastack, packetstruct *packet) {
 	packet->length = htons(0);
 	//FIXME: mettre le payload a zero !!
 	packet->crc = htonl(0); //TODO: compute CRC
-	
+
 	ssize_t lensent = sendto(sock_id,packet,sizeof(packetstruct),0,(struct sockaddr *)&src_host,src_len);
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
@@ -190,8 +193,14 @@ int main(int argc, char* argv[]) {
         	exit(EXIT_FAILURE);
     	}
 
-    	//TODO: getOpt !
-    	/* Provisoire... */
+        /* Destination file opening */
+        if(fd == -1) {
+            if((fd = open(filename, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG)) < 0) {
+                die("Error opening destination file");
+            }
+        }
+
+    	/* Port and adresses string */
     	char *addr_str = argv[0];
     	char *port_str = argv[1];
 
@@ -208,8 +217,8 @@ int main(int argc, char* argv[]) {
       		freeaddrinfo(address);
       		exit(EXIT_FAILURE);
 	}
-	
-	
+
+
     	/* initialize the socket used by the receiver */
     	sock_id = init_host(address, receiver);
     	if(sock_id == -1) {
