@@ -114,7 +114,7 @@ void acknowledge(int lastack, packetstruct *packet) {
 
 	packet->type = PTYPE_ACK;
 	packet->window = BUFFSIZE; //TODO: quoi mettre ?
-	packet->seqnum = lastack;
+	packet->seqnum = lastack+1; // prochain numéro de séquence attendu
 	packet->length = htons(0);
 	//FIXME: mettre le payload a zero !!
 	packet->crc = htonl(0); //TODO: compute CRC

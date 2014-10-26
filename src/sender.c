@@ -75,7 +75,7 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	void *payloadaddress = &(send_buffer[*bufferPos].payload);
 	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
 	send_buffer[*bufferPos].type = PTYPE_ACK;
-	send_buffer[*bufferPos].window = BUFFSIZE;
+	send_buffer[*bufferPos].window = 0;
 	send_buffer[*bufferPos].seqnum = *seq;
 	send_buffer[*bufferPos].length = size;
 	send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
@@ -88,7 +88,7 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	*bufferPos = (*bufferPos+1)%BUFFSIZE;
 	*bufferFill = *bufferFill+1;
 	*seq = (*seq+1)%MAXSEQ;
-	// TODO changer le contenu de window (Nécessaire? On utilise pas les numéros de séquence)
+	// TODO changer le contenu de window nécessaire? On utilise pas les numéros de séquence
 	return size;
 }
 /*
@@ -113,10 +113,10 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id
 	return lensent;
 }
 /*
-* Function that removes a packet from the buffer
+* Function that removes all the packets before ackedframe from the buffer
 */
 int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ackedframe){
-	int diff = (seq-ackedframe+MAXSEQ)%MAXSEQ;
+	int diff = (seq-ackedframe+1+MAXSEQ)%MAXSEQ;
 	if(diff>*bufferFill){
 		printf("Ack is out of window");
 		return 1;
@@ -192,17 +192,10 @@ int selectiveRepeat(){
 			FD_SET(sock_id, &readfs);
 			nfd = select(sock_id+1,&readfs, NULL,NULL,&timeOut);
 		}// FIXME : Avec un if?
-		//printf("Value of nfd : %d\n",nfd);
-		/*while (nfd==-1){
-			perror("select");
-			exit(EXIT_FAILURE);
-		}*/
-		//Acquis reçu
 		if (FD_ISSET(sock_id,&readfs)){
 			//printf("Sockaddress : %s\n",(address->ai_addr)->sa_data);
 			// TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
 			
-			//int received = recvfrom(sock_id,(void *)(ackBuffer),sizeof(packetstruct),0,NULL,0); Je ne comprends pas pq cette ligne ne marche pas
 			int received = recvfrom(sock_id,(void *)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
 			//printf("Value of received : %d\n",received);
 			if((received)<0){
