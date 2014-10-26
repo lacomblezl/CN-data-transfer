@@ -42,7 +42,7 @@ typedef struct slot {
     uint8_t seqnum;
     bool received;
 } window_slot;
-window_slot window[BUFFSIZE];                // The sliding window
+window_slot window[BUFFSIZE];       // The sliding window
 
 int sock_id;                        // The socket used by the program
 packetstruct recv_buffer[BUFFSIZE]; // receiving buffer

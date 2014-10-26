@@ -25,6 +25,7 @@
 #include <getopt.h>
 #include <time.h>
 #include <errno.h>
+#include <zlib.h>
 
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
