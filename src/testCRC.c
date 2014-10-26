@@ -3,19 +3,37 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <string.h>
-#include <zlib.h>
+#include <sys/types.h>
+#include "rtp.h"
 
 int main(int argc, const char *argv[]) {
 
-    if(argc != 2) {
-        printf("missing argument !\n");
-        exit(EXIT_FAILURE);
+    packetstruct *test = (packetstruct*) calloc(1, sizeof(packetstruct));
+
+    test->type = PTYPE_DATA;
+    test->window = 5;
+    test->seqnum = 8;
+    test->length = 16;
+
+
+    memcpy((void*) test->payload, (void*) "loremIpsum", strlen("loremIpsum"));
+
+    uint32_t crc;
+
+    if(compute_crc(test, &crc)) {
+        printf("Error computig crc !\n");
+        return -1;
     }
 
-    uLong crc = crc32(0L, Z_NULL, 0);
+    test->crc = crc;
 
-    crc = crc32(crc, (Bytef *) argv[1], strlen(argv[1]));
-    printf("CRC: %lu\n", crc);
+    printf("Calculated CRC: %u\n", crc);
+
+    printf("First test: %u (expected true)\n", packet_valid(test));
+
+    test->window = 2;
+
+    printf("Second test: %u (expected false)\n", packet_valid(test));
 
     return 0;
 }
