@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 #include <netdb.h>
+#include <zlib.h>
+#include <stdbool.h>
 
 #define PAYLOAD 512
 #define PTYPE_DATA 1
@@ -42,6 +44,7 @@ enum host_type {
 	sender = 0,
 	receiver = 1 };
 
+
 /*
  * Initializes the socket needed to communicate on top on UDP.
  * The type is used to specify if the socket should be bound or connected
@@ -66,8 +69,16 @@ int init_host(struct addrinfo *address, enum host_type type);
  */
 int connect_up(int sock_id);
 
-/* TODO: implementer packet_valid
- * Verifie si le packet recu est valide en verifiant son CRC...
- * Retourne 1 si le packet est valide, 0 sinon.
+
+/*
+ * Computes the CRC given the following data and binds it to result.
+ * Returns 0, or -1 if an error was encountered
  */
-int packet_valid(packetstruct);
+int compute_crc(packetstruct* packet, uint32_t *result);
+
+
+/* TODO: implementer packet_valid
+* Verifie si le packet recu est valide en verifiant son CRC...
+* Retourne 1 si le packet est valide, 0 sinon.
+*/
+bool packet_valid(packetstruct* packet);

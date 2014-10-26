@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-Wall -Werror -O3
-LDFLAGS=
+LDFLAGS=-lz
 OBJ = $(wildcard *.o)
 
 # First executable
@@ -20,13 +20,13 @@ RECV_OBJ= $(RECV_SRC:.c=.o)
 all: $(SEND) $(RECV)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(LDFLAGS)  -c -o $@ $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(SEND): $(SEND_OBJ)
-	$(CC) -o $@ $^ $(LDFLAGS)
+	$(CC)  $(LDFLAGS) -o $@ $^
 
 $(RECV): $(RECV_OBJ)
-	$(CC) -o $@ $^ $(LDFLAGS)
+	$(CC)  $(LDFLAGS) -o $@ $^
 
 clean:
 	rm $(OBJ)

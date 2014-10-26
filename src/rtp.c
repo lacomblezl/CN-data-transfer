@@ -13,6 +13,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <zlib.h>
+#include <string.h>
+
 #include "rtp.h"
 
 
@@ -55,10 +59,61 @@ int connect_up(int sock_id) {
 
 
 /*
- * Computes the CRC given the following data
+ * Computes the CRC given the following data and binds it to result
+ * Returns 0, or -1 if an error was encountered
+ * TODO: remplacer la taille du payload hardcodee
  */
-int compute_crc(char* header, char* payload)
-{
-    //TODO implement crc...
+int compute_crc(packetstruct* packet, uint32_t *result) {
+
+    // The number of bytes on which the CRC must be applied
+    size_t len = PAYLOAD + 4;
+
+    // Allocate space to store the buffer to wich CRC is applied
+    Bytef *buffer = malloc(len*sizeof(Bytef));
+    if(buffer == NULL) {
+        return -1;
+    }
+
+    // Fill buffer with the frame content (not the CRC part) !
+    memcpy((void*) buffer, (void*) packet, len);
+
+    // Compute CRC
+    uLong crc = crc32(0L, Z_NULL, 0);
+    crc = crc32(crc, buffer, len);
+
+    // Bind the result
+    *result = (uint32_t) crc;
+
+    free(buffer);
+    return 0;
+}
+
+
+/*
+ * Checks the packet's CRC
+ */
+bool packet_valid(packetstruct* packet) {
+
+    // The number of bytes on which the CRC must be applied
+    size_t len = PAYLOAD + 4;
+
+    // Allocate space to store the buffer to wich CRC is applied
+    Bytef *buffer = malloc(len*sizeof(Bytef));
+    if(buffer == NULL) {
+        return -1;
+    }
+
+    // Fill buffer with the frame content (not the CRC part) !
+    memcpy((void*) buffer, (void*) packet, len);
+
+    // Compute CRC
+    uLong crc = crc32(0L, Z_NULL, 0);
+    crc = crc32(crc, buffer, len);
+
+    free(buffer);
+
+    // Check the result
+    return ( (uint32_t) crc == packet->crc);
+
     return 0;
 }
