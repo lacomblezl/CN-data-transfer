@@ -22,11 +22,13 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <stdbool.h>
+#include <time.h>
+#include <errno.h>
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
 #define MAXSEQ 20
-#define TIMEOUT 5
+#define TIMEOUT 500 // Timer de chaque paquet en msec
 #define BUFFSIZE    10              // size of the buffer
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
@@ -44,6 +46,7 @@ struct addrinfo hints = {
 typedef struct slot {
 	uint8_t seqnum;
 	bool received;
+	clock_t timesent;
 } window_slot;
 
 window_slot window[BUFFSIZE];                        
@@ -104,11 +107,13 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id
 	// Send the word to the server
 	int lentosend = ntohs(((packetstruct *)bufaddress)->length)+8;
 	ssize_t lensent = send(sock_id, bufaddress, lentosend, 0); // Taille donnée par length +8
+	window[packetbufferindex].timesent=clock();
 	// FIXME Verbose print
-	printf("Paquet sent with sequence number %d, %d bytes \n",window[packetbufferindex].seqnum,(int)lensent);
+	//printf("Packet sent with sequence number %d, %d bytes \n",window[packetbufferindex].seqnum,(int)lensent);
 	if(lensent != (lentosend)) {
 		Die("Mismatch in number of sent bytes");
 	}
+	
 	// TODO : Wait if receiver unavailable?
 	return lensent;
 }
@@ -121,20 +126,14 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
 		printf("Ack is out of window");
 		return 1;
 	}
-	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
-	window[packetbufferindex].received = true;
 	int i = 0;
-	while((window[(bufferPos-*bufferFill+i+BUFFSIZE)%BUFFSIZE].received) && i<*bufferFill){
+	while(i<=*bufferFill-diff){
 			//enlever les paquets acquis du buffer
+			window[(bufferPos-*bufferFill+i+BUFFSIZE)%BUFFSIZE].received = true;
 			*unack=(*unack+1)%MAXSEQ;
 			*bufferFill=*bufferFill-1;
+			printf("Unack = %d\n",*unack);
 	}
-			/*if (unack==seq){
-				cancel_timer();
-			}
-			else{restart_timer();}
-			}*/
-	// TODO : Bloody timers
 	return 1;
 }
 /*
@@ -160,6 +159,23 @@ int isTransmitted(ssize_t size,int bufferFill, int bufferPos)
 	int istransm = (size!=PAYLOADSIZE) && allackedwindow;
 return istransm;
 }
+/*
+* Returns the first sequence number for which the time is over or -1 if no timer is over
+*/
+int timeisover(int bufferFill, int bufferPos){
+	clock_t now = clock();
+	int i;
+	for(i=0;i<bufferFill;i++){
+		int index = (bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE;
+		if(window[index].received==false){
+			int diff = (now - window[index].timesent)*1000/CLOCKS_PER_SEC;//msecs
+			if(diff>TIMEOUT){
+				return window[index].seqnum;
+			}
+		}
+	}
+	return -1;	
+}
 //Fonction qui gère l'envoi des paquets
 int selectiveRepeat(){
 	int seq = 0;//Numéro de séquence du prochain frame à envoyer
@@ -169,55 +185,38 @@ int selectiveRepeat(){
 
 	// TODO : mettre des bonnes valeurs
 
-	fd_set readfs; //Set de filedescriptors utilisé par select
+	//fd_set readfs; //Set de filedescriptors utilisé par select
 	
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
 	while(!isTransmitted(size,bufferFill,bufferPos)){
-		struct timeval timeOut;
-		timeOut.tv_sec = TIMEOUT;
-		timeOut.tv_usec = 0.0;// TODO Valeurs du timeout
-		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE){// FIXME : timer pour chaque paquet
-			if (seq==unack){//Start timer
-			}
+		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE){
 			size = insert_in_buffer(&seq,&bufferPos,&bufferFill);
 			supersend(bufferPos,bufferFill,seq,seq-1,sock_id);
-			//FIXME : verbose print
-			// TODO : Vérifier que le timeout n'a pas été dépassé
 		}
-		int nfd = -1; // number of file descriptor that are set in readfs
-		//Vider readfs et mettre sock dedans
-		while (nfd==-1){
-			FD_ZERO(&readfs);
-			FD_SET(sock_id, &readfs);
-			nfd = select(sock_id+1,&readfs, NULL,NULL,&timeOut);
-		}// FIXME : Avec un if?
-		if (FD_ISSET(sock_id,&readfs)){
-			//printf("Sockaddress : %s\n",(address->ai_addr)->sa_data);
-			// TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
-			
-			int received = recvfrom(sock_id,(void *)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
-			//printf("Value of received : %d\n",received);
-			if((received)<0){
+		
+	//Réception des acquis
+		fcntl(sock_id,F_SETFL,O_NONBLOCK);
+// TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
+		int received = recvfrom(sock_id,(void *)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
+		if((received)<0){		
+			if (errno !=EAGAIN){ //Packets received
 				Die("No packet received");
 			}
+		}
+		else{
+
 			int ackedframe = processAck();
 			remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
 		}
-		else{
-		//Timeout
-		//if (nfd == 0){
-			printf("Timeout reached\n");
-			int i;
-			for (i=0;i<bufferFill;i++){
-				supersend(bufferPos,bufferFill,seq,seq-bufferFill+i,sock_id);
-				// Restart timer ???
-			}
+	// Gestion des timers
+		int whichisover;
+		while((whichisover=timeisover(bufferFill,bufferPos))!=-1){
+			//printf("Time is over! : %d\n",whichisover);
+			supersend(bufferPos,bufferFill,seq,whichisover,sock_id);
 		}
-
-		
 	}
-			printf("File successfully transmitted\n");
+	printf("\nFile successfully transmitted\n");
 	return EXIT_SUCCESS;
 }
 
