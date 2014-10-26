@@ -22,6 +22,8 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <stdbool.h>
+#include <getopt.h>
+
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
@@ -46,12 +48,19 @@ typedef struct slot {
 	bool received;
 } window_slot;
 
-window_slot window[BUFFSIZE];                        
+window_slot window[BUFFSIZE];
 packetstruct send_buffer[BUFFSIZE];
 packetstruct ackBuffer;
 int sock_id;
 int fileDescriptor;
 char *filename;
+
+struct options {
+    char* filename;
+    int sber;
+    int splr;
+    int delay;
+} opts;
 
 /*
 * Cleanly exits the application in case of error
@@ -170,7 +179,7 @@ int selectiveRepeat(){
 	// TODO : mettre des bonnes valeurs
 
 	fd_set readfs; //Set de filedescriptors utilisé par select
-	
+
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
 	while(!isTransmitted(size,bufferFill,bufferPos)){
@@ -195,7 +204,7 @@ int selectiveRepeat(){
 		if (FD_ISSET(sock_id,&readfs)){
 			//printf("Sockaddress : %s\n",(address->ai_addr)->sa_data);
 			// TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
-			
+
 			int received = recvfrom(sock_id,(void *)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
 			//printf("Value of received : %d\n",received);
 			if((received)<0){
@@ -215,7 +224,7 @@ int selectiveRepeat(){
 			}
 		}
 
-		
+
 	}
 			printf("File successfully transmitted\n");
 	return EXIT_SUCCESS;
@@ -225,26 +234,105 @@ int selectiveRepeat(){
 
 
 
-int main(int argc, const char** argv) {
-	//On ouvre le fichier
-	filename = "loremipsum.txt";
-	fileDescriptor = open(filename, O_RDONLY);
-	if (fileDescriptor<0){
+
+
+/* Print l'usage de la fonction send */
+void usage() {
+    printf("usage : ./sender [--file filename] [--sber x] [--splr x]\n");
+    printf("\t\t\t\t\t[--delay d] hostname port\n");
+}
+
+
+/*
+ * Formate les options passees au programme
+ */
+void map_options(int argc, char **argv, int *opt_count) {
+
+    // default values
+    //TODO: replace "loremipsum by NULL !"
+    opts.filename = NULL;
+    opts.sber = 0;
+    opts.splr = 0;
+    opts.delay = 0;
+
+    /* options descriptor */
+    static struct option longopts[] = {
+        {"file",   required_argument,    NULL,     'f' },
+        {"sber",   required_argument,    NULL,     's'},
+        {"splr",   required_argument,    NULL,     'S'},
+        {"delay",  required_argument,    NULL,     'd'},
+        { NULL,    0,                    NULL,     0 }
+    };
+
+    int ch;
+    while ((ch = getopt_long(argc, argv, "vf:", longopts, NULL)) != -1) {
+        switch (ch) {
+        case 'f':
+            opts.filename = optarg;
+            break;
+
+        case 's':
+            opts.sber = atoi(optarg);
+            break;
+
+        case 'S':
+            opts.splr = atoi(optarg);
+            break;
+
+        case 'd':
+            opts.delay = atoi(optarg);
+            break;
+
+        default:
+            usage();
+        }
+    }
+    *opt_count = optind;
+}
+
+
+int main(int argc, char* argv[]) {
+
+    int opt_count;
+    map_options(argc, argv, &opt_count);
+
+    argc -= opt_count;
+    argv += opt_count;
+
+    if(argc != 2) {
+        usage();
+        exit(EXIT_FAILURE);
+    }
+
+    //On ouvre le fichier
+    if(opts.filename == NULL) {
+        fileDescriptor = STDIN_FILENO;
+    }
+    else {
+	    fileDescriptor = open(opts.filename, O_RDONLY);
+    }
+	if (fileDescriptor < 0) {
 		perror("Error opening file");
 		exit(EXIT_FAILURE);
 	}
-	//TODO: getOpt !
-	    /* Provisoire... */
-	//TODO : si l'addresse n'est pas valide
-	const char *addr_str = argv[1];
-	const char *port = argv[2];
-	
-	
+
+	char *addr_str = argv[0];
+	char *port_str = argv[1];
+
+    //FIXME: debug print !
+    printf("Sending on address %s - port %s\n", addr_str, port_str);
+    printf("Parameters values :\n");
+    printf("\tfd : %d\n", fileDescriptor);
+    printf("\tsber (percent): %d\n", opts.sber);
+    printf("\tsplr (percent): %d\n", opts.splr);
+    printf("\tdelay (ms) : %d\n", opts.delay);
+
+
 	/* Resolve the address passed to the program */
 	//FIXME: faire dependre de argv !
 	int result;
-	if((result = getaddrinfo(addr_str, port, &hints, &address)) < 0) {
-		printf("Error resolving address %s - code %i\n", argv[0], result);
+	if((result = getaddrinfo(addr_str, port_str, &hints, &address)) < 0) {
+		printf("Error resolving address %s - code %i\n", addr_str, result);
 		freeaddrinfo(address);
 		exit(EXIT_FAILURE);
 	}
@@ -271,5 +359,3 @@ int main(int argc, const char** argv) {
 	close(sock_id);
 	return EXIT_SUCCESS;
 }
-
-
