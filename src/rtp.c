@@ -66,7 +66,7 @@ int connect_up(int sock_id) {
 int compute_crc(packetstruct* packet, uint32_t *result) {
 
     // The number of bytes on which the CRC must be applied
-    size_t len = PAYLOAD + 4;
+    size_t len = PAYLOADSIZE + 4;
 
     // Allocate space to store the buffer to wich CRC is applied
     Bytef *buffer = malloc(len*sizeof(Bytef));
@@ -95,7 +95,7 @@ int compute_crc(packetstruct* packet, uint32_t *result) {
 bool packet_valid(packetstruct* packet) {
 
     // The number of bytes on which the CRC must be applied
-    size_t len = PAYLOAD + 4;
+    size_t len = PAYLOADSIZE + 4;
 
     // Allocate space to store the buffer to wich CRC is applied
     Bytef *buffer = malloc(len*sizeof(Bytef));

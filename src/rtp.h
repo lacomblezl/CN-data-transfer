@@ -20,7 +20,7 @@
 #include <zlib.h>
 #include <stdbool.h>
 
-#define PAYLOAD 512
+#define PAYLOADSIZE 512
 #define PTYPE_DATA 1
 #define PTYPE_ACK 2
 
@@ -32,7 +32,7 @@ typedef struct blah {
 	uint8_t window : 5;
 	uint8_t seqnum : 8;
 	uint16_t length : 16;
-	uint8_t payload[PAYLOAD];
+	uint8_t payload[PAYLOADSIZE];
 	uint32_t crc;
 } __attribute__((packed)) packetstruct;
 
@@ -63,7 +63,7 @@ enum host_type {
 int init_host(struct addrinfo *address, enum host_type type);
 
 
-/* //TODO: corriger les options et specifier
+/* //TODO: corriger les options, specifier et implementer !
  * Tente d'etablir une connection fiable avec l'host specifie, et retourne
 * -1 en cas d'erreur.
  */
@@ -77,8 +77,8 @@ int connect_up(int sock_id);
 int compute_crc(packetstruct* packet, uint32_t *result);
 
 
-/* TODO: implementer packet_valid
-* Verifie si le packet recu est valide en verifiant son CRC...
-* Retourne 1 si le packet est valide, 0 sinon.
-*/
+/*
+ * Determine si le packet recu est valide en verifiant son CRC...
+ * Retourne true si le packet est valide, false sinon.
+ */
 bool packet_valid(packetstruct* packet);
