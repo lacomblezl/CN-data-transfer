@@ -31,8 +31,8 @@
 #define HEADERSIZE 4
 #define CRCSIZE 4
 #define MAXSEQ 31
-#define TIMEOUT 500 // Timer de chaque paquet en msec
-#define BUFFSIZE 31              // size of the buffer
+#define TIMEOUT 500                 // Timer de chaque paquet en msec
+#define BUFFSIZE 31                 // size of the buffer
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 struct sockaddr_storage src_host;   // source host emitting the packets
@@ -198,10 +198,11 @@ int timeisover(int bufferFill, int bufferPos){
 	return -1;
 }
 //Fonction qui gère l'envoi des paquets
-int selectiveRepeat(){
+int selectiveRepeat() {
+
 	int seq = 0;//Numéro de séquence du prochain frame à envoyer
 	int unack = 0;//Numéro de séquence du dernier acquis reçu
-	int bufferFill = 0;//Nombres de frames dans le buffer
+	int bufferFill = 0;//Nombres de packet dans le buffer
 	int bufferPos = 0; // La position dans le buffer du prochain paquet à remplacer
 
 	// TODO : mettre des bonnes valeurs
@@ -211,29 +212,35 @@ int selectiveRepeat(){
 
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
-	while(!isTransmitted(size,bufferFill,bufferPos)){
-		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE){
-			size = insert_in_buffer(&seq,&bufferPos,&bufferFill);
-			supersend(bufferPos,bufferFill,seq,seq-1,sock_id);
+	while(!isTransmitted(size,bufferFill,bufferPos)) {
+
+        // Insertion et envoie de nouveaux frames dans le buffer
+		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE) {
+
+			size = insert_in_buffer(&seq, &bufferPos, &bufferFill);
+			supersend(bufferPos, bufferFill, seq, seq-1, sock_id);
 		}
 
-	//Réception des acquis
+	    //Réception des acquis
 		fcntl(sock_id,F_SETFL,O_NONBLOCK);
-// TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
-		int received = recvfrom(sock_id,(void *)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
-		if((received)<0){
-			if (errno !=EAGAIN){ //Packets received
+        // TODO : Essai d'addresse non définie(ne marche pas avec ai_addr)
+		int received =
+            recvfrom(sock_id,(void*)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
+
+        if((received) < 0) {
+			if (errno !=EAGAIN) {
+                //Packets received
 				Die("No packet received");
 			}
 		}
-		else{
-
+		else {
 			int ackedframe = processAck();
 			remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
 		}
-	// Gestion des timers
+
+        // Gestion des timers
 		int whichisover;
-		while((whichisover=timeisover(bufferFill,bufferPos))!=-1){
+		while((whichisover=timeisover(bufferFill,bufferPos))!=-1) {
 			//printf("Time is over! : %d\n",whichisover);
 			supersend(bufferPos,bufferFill,seq,whichisover,sock_id);
 		}
