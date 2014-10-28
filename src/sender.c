@@ -30,9 +30,9 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
-#define MAXSEQ 20
+#define MAXSEQ 31
 #define TIMEOUT 500 // Timer de chaque paquet en msec
-#define BUFFSIZE    10              // size of the buffer
+#define BUFFSIZE 31              // size of the buffer
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 struct sockaddr_storage src_host;   // source host emitting the packets
@@ -73,14 +73,16 @@ void Die(char* error_msg) {
     perror(error_msg);
     freeaddrinfo(address);
     close(sock_id);
-    //TODO: close(fd);
+    close(fileDescriptor);
     exit(EXIT_FAILURE);
 }
+
 /*
-* Insère les données avec le header et le CRC dans le buffer à la   bonne position
-* et retourne la taille des données insérées(sans header et CRC)
-*/
-int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
+ * Insère les données avec le header et le CRC dans le buffer à la
+ * bonne position et retourne la taille des données
+ * insérées(sans header et CRC)
+ */
+int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	if (*bufferFill>=BUFFSIZE){
 		Die("Da buffer is-a full");
 	}
@@ -92,9 +94,15 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 	send_buffer[*bufferPos].seqnum = *seq;
 	send_buffer[*bufferPos].length = size;
 	send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
-    	send_buffer[*bufferPos].crc = htonl(0);
-	//FIXME changer le CRC
-	// Mise à jour des infos de la window
+
+    uint32_t crc;
+	if(compute_crc(&send_buffer[*bufferPos], &crc)) {
+        Die("Error computing crc");
+    }
+    //FIXME changer le CRC en big-endian !
+    send_buffer[*bufferPos].crc = crc;
+
+    // Mise à jour des infos de la window
 	window[*bufferPos].seqnum = *seq;
 	window[*bufferPos].received = false;
 	// Mise à jour des variables de description de la fenêtre et de la séquence
@@ -107,20 +115,23 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill){
 /*
  * Fonction qui envoie un paquet avec l'index paquetseq
 */
-int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id){
+int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id) {
 	int diff = (seq-paquetseq+MAXSEQ)%MAXSEQ;
 	if(diff>bufferFill){
 		Die("Yo, you buffers too small fo da shit man");
 	}
 	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
 	void *bufaddress = &send_buffer[packetbufferindex];
-	// Send the word to the server
-	int lentosend = ntohs(((packetstruct *)bufaddress)->length)+8;
-	ssize_t lensent = send(sock_id, bufaddress, lentosend, 0); // Taille donnée par length +8
+
+    // Send the word to the server
+    // TODO: mettre au propre
+	//int lentosend = ntohs(((packetstruct *)bufaddress)->length)+8;
+	ssize_t lensent = send(sock_id, bufaddress, sizeof(packetstruct), 0); // Taille donnée par length +8
 	window[packetbufferindex].timesent=clock();
-	// FIXME Verbose print
+
+    // FIXME Verbose print
 	//printf("Packet sent with sequence number %d, %d bytes \n",window[packetbufferindex].seqnum,(int)lensent);
-	if(lensent != (lentosend)) {
+	if(lensent != sizeof(packetstruct)) {
 		Die("Mismatch in number of sent bytes");
 	}
 

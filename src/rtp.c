@@ -41,7 +41,7 @@ int init_host(struct addrinfo *address, enum host_type type) {
 
     /* Else (type is receiver), bind socket to the address specified */
     else {
-        if(bind(sock_id, address->ai_addr, address->ai_addrlen)) {//||connect(sock_id, address->ai_addr, address->ai_addrlen)
+        if(bind(sock_id, address->ai_addr, address->ai_addrlen)) {
             close(sock_id);
             return -1;
         }
@@ -61,7 +61,6 @@ int connect_up(int sock_id) {
 /*
  * Computes the CRC given the following data and binds it to result
  * Returns 0, or -1 if an error was encountered
- * TODO: remplacer la taille du payload hardcodee
  */
 int compute_crc(packetstruct* packet, uint32_t *result) {
 
@@ -90,7 +89,8 @@ int compute_crc(packetstruct* packet, uint32_t *result) {
 
 
 /*
- * Checks the packet's CRC
+ * Checks the packet's CRC after doing an endianness correction
+ * TODO: convert endianness !!
  */
 bool packet_valid(packetstruct* packet) {
 

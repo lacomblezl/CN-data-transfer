@@ -24,8 +24,8 @@
 
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
-#define BUFFSIZE 10                 // size of the receiving buffer
-#define MAXSEQ 20
+#define BUFFSIZE 31                 // size of the receiving buffer
+#define MAXSEQ 31
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
@@ -36,7 +36,8 @@ struct addrinfo hints = {
     .ai_socktype = SOCK_DGRAM,
     .ai_protocol = IPPROTO_UDP };
 struct sockaddr_storage src_host;   // source host emitting the packets
-socklen_t src_len;      // size of the source address
+socklen_t src_len;                  // size of the source address
+
 //FIXME: definition de window commune a send et receive non ?
 typedef struct slot {
     uint8_t seqnum;
@@ -72,38 +73,40 @@ void die(char *error_msg) {
  * Updates the window accordingly to accept new sequence numbers.
  * Sets lastack to its new value.
  */
-int flush_frames(int fd, uint8_t *lastack, int *bufferPos,int *bufferFill) {
+int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
 
     // iterates over the sliding window slots
 
 	uint8_t i=0;
-	while(i<BUFFSIZE && window[(*bufferPos)%BUFFSIZE].received){
-		int length = ntohs(recv_buffer[*bufferPos].length);
-        	if(write(fd, &(recv_buffer[*bufferPos].payload), length) != length) {
-            		return -1;
-        	}
-		*lastack = (*lastack+1)%MAXSEQ;
-		*bufferPos = (*bufferPos+1)%BUFFSIZE;
-		*bufferFill = *bufferFill-1;
+	while(i < BUFFSIZE && window[*bufferPos].received) {
+
+        int length = ntohs(recv_buffer[*bufferPos].length);
+        if(write(fd, &(recv_buffer[*bufferPos].payload), length) != length) {
+            return -1;
+        }
+		*lastack = (*lastack + 1)%MAXSEQ;
+		*bufferPos = (*bufferPos + 1)%BUFFSIZE;
+		*bufferFill = *bufferFill - 1;
 		window[*bufferPos].received = 0;
 		window[*bufferPos].seqnum = (window[*bufferPos].seqnum+BUFFSIZE)%MAXSEQ;
 		i++;
-        }
+    }
 	return 0;
 }
 
 
 /*
- * Checks if the seq_numb is in the sliding window. If so, returns it's index
- * into the window. If not, returns -1.
+ * Checks if the sequence number 'seq_numb' is in the sliding window.
+ * If so, returns it's index into the actual list representing the window.
+ * If not, returns -1.
  */
 int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
-	int diff = (seqnumb-lastack+MAXSEQ)%MAXSEQ;
-	//printf("seqnumb : %d , lastack : %d, bufferPos : %d, idx : %d",seqnumb,lastack,bufferPos,(bufferPos+diff)%BUFFSIZE);
-	if(diff<=0 || diff>BUFFSIZE){
+
+    int diff = (seqnumb-lastack+MAXSEQ)%MAXSEQ;
+	if(diff<=0 || diff>BUFFSIZE) {
 		return -1;
 	}
-	else{
+	else {
 		return (bufferPos+diff-1)%BUFFSIZE;
 	}
 }
@@ -111,37 +114,66 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
 /*
  * Generates an rtp packet acknowledging the sequence number seqnumb
- * TODO: je fais quoi de la partie window ?
+ * FIXME: window de taille fixe pour l'instant
+ * FIXME: mettre le payload a zero en faisant un calloc de packet !!
  */
 void acknowledge(int lastack, packetstruct *packet) {
-	packet->type = PTYPE_ACK;
-	packet->window = BUFFSIZE; //TODO: quoi mettre ?
-	packet->seqnum = lastack+1; // prochain numéro de séquence attendu
-	packet->length = htons(0);
-	//FIXME: mettre le payload a zero !!
-	packet->crc = htonl(0); //TODO: compute CRC
 
-	ssize_t lensent = sendto(sock_id,packet,sizeof(packetstruct),0,(struct sockaddr *)&src_host,src_len);
+	packet->type = PTYPE_ACK;
+	packet->window = BUFFSIZE;
+	packet->seqnum = (lastack+1); // prochain numéro de séquence attendu
+	packet->length = htons(0);
+
+    uint32_t crc;
+    if(compute_crc(packet, &crc)) {
+        die("Error computing CRC");
+    }
+
+	packet->crc = crc;
+
+	ssize_t lensent = sendto(sock_id,packet,sizeof(packetstruct),0,
+                                    (struct sockaddr *) &src_host, src_len);
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
 	}
 }
+
+
 /*
-* 1 si tout est reçu, 0 sinon
-*/
-int isReceived(ssize_t size, int bufferFill, int bufferPos){
-int i =0;
+ * 1 si tout est reçu, 0 sinon
+ * TODO: si la size < LENGTH n'etait pas
+ * RETURN:
+ *      true if the file has entirely been received, false otherwise.
+ *
+ * ARGUMENTS:
+ *      - last_received : true if a packet smaller than PAYLOAD has been recvd.
+ *      - bufferFill : Number of received packet among the seq. numbers in the
+                       the window.
+ *      - bufferPos : Index of the sequence number following 'lastack' in
+ *                    the receiving window.
+ */
+int isReceived(bool last_received, int bufferFill, int bufferPos) {
+
+    if(!last_received) {
+        return 0;
+    }
+
+    int i =0;
 	int allackedwindow = 1;
 	//printf("\nValeur de bufferFill : %d \n Valeur de size : %d \n Valeur de size!=PAYL : %d \n",bufferFill,(int)size,(size!=PAYLOADSIZE));
-	while(i<bufferFill && allackedwindow){
+
+    while(i < bufferFill && allackedwindow) {
 		allackedwindow = (window[(bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE].received);
 		i++;
 		//printf("Valeur de allacked : %d\n",allackedwindow);
 	}
-	int istransm = (size!=sizeof(packetstruct)) && allackedwindow;
-	//printf("Istransmitted ? : %d\n",istransm);
-return istransm;
+	int istransm = allackedwindow;
+
+    //printf("Istransmitted ? : %d\n",istransm);
+    return istransm;
 }
+
+
 /*
  * Formate les options passees au programme
  */
@@ -180,94 +212,119 @@ void map_options(int argc, char **argv, int *opts) {
 
 int main(int argc, char* argv[]) {
 
-	packetstruct tmp_packet;        // stores the just received packet
-	uint8_t lastack=MAXSEQ-1;           // last in-sequence acknowledge packet
-	int bufferPos = 0;		//Corresponding position in the buffer
-	// TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
-	int opt;
-	map_options(argc, argv, &opt);
-	argc -= optind;
-	argv += optind;
-	if(argc != 2) {
-        	usage();
-        	exit(EXIT_FAILURE);
-    	}
+    packetstruct tmp_packet;           // stores the just received packet
+    uint8_t lastack=MAXSEQ-1;          // last in-sequence acknowledge packet
+    int bufferPos = 0;                 // Corresponding position in the buffer
+    // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
+    bool lastPacketReceived = false;   // True if a packet with less than 512B
+                                       // of paylod has been received.
 
-        /* Destination file opening */
-        if(fd == -1) {
-            if((fd = open(filename, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG)) < 0) {
-                die("Error opening destination file");
+    // Checks the program parameters
+    int opt;
+    map_options(argc, argv, &opt);
+    argc -= optind;
+    argv += optind;
+    if(argc != 2) {
+        usage();
+        exit(EXIT_FAILURE);
+    }
+
+    // Destination file opening
+    if(fd == -1) {
+        if((fd = open(filename, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG)) < 0) {
+            die("Error opening destination file");
+        }
+    }
+
+    // Port and adresses string init
+    char *addr_str = argv[0];
+    char *port_str = argv[1];
+
+    if(verbose) {
+        printf("\nListenning address \'%s\' on port \'%s\'\n", addr_str,
+        port_str);
+    }
+
+    // Resolve the address passed to the program
+    int result;
+    if((result = getaddrinfo(addr_str, port_str, &hints, &address)) < 0) {
+        printf("Error resolving address %s - code %i", addr_str, result);
+        freeaddrinfo(address);
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // initialize the socket used by the receiver
+    sock_id = init_host(address, receiver);
+    if(sock_id == -1) {
+        die("Error creating socket");
+    }
+
+    int bufferFill = 0;     //TODO: nb of real packets received ??
+    int idx;                //TODO:index used serveral times in each iteration
+    ssize_t size = PAYLOADSIZE;     // Size of the received payload
+
+    while(!isReceived(lastPacketReceived,bufferFill,bufferPos)) {
+
+        printf("enter while\n");
+
+        /* blocking receive - we are waiting for a frame */
+        src_len = sizeof(src_host);
+        if(recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
+            (struct sockaddr*) &src_host, &(src_len)) != sizeof(packetstruct)) {
+                //TODO: on serait pas plus soft ??
+                die("Error while receiving packet");
+        }
+
+        /* only if the packet is valid */
+        if(packet_valid(&tmp_packet)) {
+
+            size = ntohs(tmp_packet.length);
+
+            if(verbose) {
+                printf("Received a %zd-byte data packet (seq %u)\n", size,
+                tmp_packet.seqnum);
+            }
+
+            // Is the sequence number in the receive window ?
+            if((idx = idx_in_window(tmp_packet.seqnum,lastack,bufferPos)) != -1) {
+                recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
+                window[idx].received = true;    // mark the frame as received
+                bufferFill++;                   // add 1 more received packet
+
+                /* If this is the last packet from the original file
+                 * (ie, payload with a size smaller than 512 Bytes */
+                 //TODO: checker que le packet a une size pkus petite !
+                 if(size < PAYLOADSIZE) {
+                     //FIXME: debug print
+                     printf("Smaller PAYLOADSIZE\n");
+                     lastPacketReceived = true;
+                 }
+
+                // Try to empty the in-sequence received packets
+                if(flush_frames(fd, &lastack, &bufferPos, &bufferFill)) {
+                    die("Error writing packets to file");
+                }
+
+                // Send an acknowledgement
+                acknowledge(lastack,&recv_buffer[idx]);
+            }
+            // Else, we do nothing and discard it...
+        }
+        else {
+            if(verbose) {
+                printf("Receivd an unvalid packet!\n");
             }
         }
 
-    	/* Port and adresses string */
-    	char *addr_str = argv[0];
-    	char *port_str = argv[1];
+    }
 
-    	if(verbose) {
-    		printf("\nListenning address \'%s\' on port \'%s\'\n", addr_str,
-                                                                port_str);
-    	}
+    //sleep(10);// FIXME: Comment terminer l'envoi
+    if(verbose){
+        printf("File successfully received\n");
+    }
 
-    	/* Resolve the address passed to the program */
-    	//FIXME: faire dependre de argv !
-    	int result;
-    	if((result = getaddrinfo(addr_str, port_str, &hints, &address)) < 0) {
-      		printf("Error resolving address %s - code %i", argv[1], result);
-      		freeaddrinfo(address);
-      		exit(EXIT_FAILURE);
-	}
-
-
-    	/* initialize the socket used by the receiver */
-    	sock_id = init_host(address, receiver);
-    	if(sock_id == -1) {
-        	perror("Error creating socket");
-        	freeaddrinfo(address);
-        	exit(EXIT_FAILURE);
-	}
-
-	if(verbose){
-  		printf("Socket initialization passed !\n");
-	}
-
-	//TODO: establish connection ! (avec boucle while)
-	// Quand on sort de la, la window est initialisee avec tous les seq numb
-	// attendus ! Pour l'instant, on va tester en connectionless.
-
-	int bufferFill=0;
-	int idx;                // index used serveral times in each iteration
-	ssize_t size =sizeof(packetstruct);
-	while(!isReceived(size,bufferFill,bufferPos)) {
-		/* blocking receive - we are waiting for a frame */
-        	src_len = sizeof(src_host);
-        	if((size=recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
-        	    (struct sockaddr*) &src_host, &(src_len))) < 0) {
-        	    die("Error while receiving packet");
-        	}
-        	//TODO: check packet !
-
-        	if(verbose) {
-        	    printf("Received a %u-byte data packet (seq %u)\n",
-        	                        tmp_packet.length, tmp_packet.seqnum);
-        	}
-
-        	// Is the sequence number in the receive window ?
-        	if((idx = idx_in_window(tmp_packet.seqnum,lastack,bufferPos)) != -1) {
-			recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
-			window[idx].received = true;    // mark the frame as received
-			bufferFill++;
-			if(flush_frames(fd, &lastack,&bufferPos,&bufferFill)) {
-				die("Error writing packets to file");
-			}
-			acknowledge(lastack,&recv_buffer[idx]);
-        	}
-	}
-	sleep(10);// FIXME : Comment terminer l'envoi
-	if(verbose){
-		printf("File successfully received\n");
-	}
-	freeaddrinfo(address);
-	close(sock_id);
-	exit(EXIT_SUCCESS);
+    freeaddrinfo(address);
+    close(sock_id);
+    exit(EXIT_SUCCESS);
 }
