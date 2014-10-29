@@ -25,7 +25,7 @@
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 #define BUFFSIZE 31                 // size of the receiving buffer
-#define MAXSEQ 255
+#define SEQSPAN 256
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
@@ -38,7 +38,7 @@ struct addrinfo hints = {
 struct sockaddr_storage src_host;   // source host emitting the packets
 socklen_t src_len;                  // size of the source address
 
-//FIXME: definition de window commune a send et receive non ?
+// definition d'un des slots constituant la window
 typedef struct slot {
     uint8_t seqnum;
     bool received;
@@ -84,11 +84,12 @@ int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
         if(write(fd, &(recv_buffer[*bufferPos].payload), length) != length) {
             return -1;
         }
-		*lastack = (*lastack + 1)%MAXSEQ;
+		*lastack = (*lastack + 1)%SEQSPAN;
 		*bufferPos = (*bufferPos + 1)%BUFFSIZE;
 		*bufferFill = *bufferFill - 1;
 		window[*bufferPos].received = 0;
-		window[*bufferPos].seqnum = (window[*bufferPos].seqnum+BUFFSIZE)%MAXSEQ;
+		window[*bufferPos].seqnum =
+                        (window[*bufferPos].seqnum+BUFFSIZE)%SEQSPAN;
 		i++;
     }
 	return 0;
@@ -102,7 +103,7 @@ int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
  */
 int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
-    int diff = (seqnumb-lastack+MAXSEQ)%MAXSEQ;
+    int diff = (seqnumb-lastack+SEQSPAN)%SEQSPAN;
 	if(diff<=0 || diff>BUFFSIZE) {
 		return -1;
 	}
@@ -113,9 +114,9 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
 
 /*
- * Generates an rtp packet acknowledging the sequence number seqnumb
+ * Generates an rtp packet acknowledging the sequence number seqnumb.
+ * 'packet' must point to a already allocated packetstruct.
  * FIXME: window de taille fixe pour l'instant
- * FIXME: mettre le payload a zero en faisant un calloc de packet !!
  */
 void acknowledge(int lastack, packetstruct *packet) {
 
@@ -123,6 +124,9 @@ void acknowledge(int lastack, packetstruct *packet) {
 	packet->window = BUFFSIZE;
 	packet->seqnum = (lastack+1); // prochain numéro de séquence attendu
 	packet->length = htons(0);
+
+    // set the payload to zero
+    memset(packet->payload, 0, PAYLOADSIZE);
 
     uint32_t crc;
     if(compute_crc(packet, &crc)) {
@@ -213,7 +217,7 @@ void map_options(int argc, char **argv, int *opts) {
 int main(int argc, char* argv[]) {
 
     packetstruct tmp_packet;           // stores the just received packet
-    uint8_t lastack=MAXSEQ-1;          // last in-sequence acknowledge packet
+    uint8_t lastack=SEQSPAN-1;         // last in-sequence acknowledge packet
     int bufferPos = 0;                 // Corresponding position in the buffer
     // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
     bool lastPacketReceived = false;   // True if a packet with less than 512B
@@ -279,6 +283,11 @@ int main(int argc, char* argv[]) {
 
         /* only if the packet is valid -  */
         is_valid = packet_valid(&tmp_packet);
+        // A fatal error occured when checking the packet
+        if(is_valid == -1){
+            die("Error decoding packet");
+        }
+
         if(is_valid == 1) {
 
             size = tmp_packet.length;
@@ -296,7 +305,6 @@ int main(int argc, char* argv[]) {
 
                 /* If this is the last packet from the original file
                  * (ie, payload with a size smaller than 512 Bytes */
-                 //TODO: checker que le packet a une size pkus petite !
                  if(size < PAYLOADSIZE) {
                      //FIXME: debug print
                      printf("Smaller PAYLOADSIZE\n");
@@ -313,21 +321,16 @@ int main(int argc, char* argv[]) {
             }
             // Else, we do nothing and discard it...
         }
-
-        // A fatal error occured when checking the packet
-        if(is_valid == -1){
-            die("Error decoding packet");
-        }
         else {
             if(verbose) {
-                printf("Receivd an unvalid packet (isValid:%u)!\n", is_valid);
+                printf("Received a corrupted packet !\n");
             }
         }
 
     }
 
     //sleep(10);// FIXME: Comment terminer l'envoi
-    if(verbose){
+    if(verbose) {
         printf("File successfully received\n");
     }
 

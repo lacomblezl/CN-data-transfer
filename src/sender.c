@@ -108,7 +108,8 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
     // Mise à jour des infos de la window
 	window[*bufferPos].seqnum = *seq;
 	window[*bufferPos].received = false;
-	// Mise à jour des variables de description de la fenêtre et de la séquence
+
+    // Mise à jour des variables de description de la fenêtre et de la séquence
 	*bufferPos = (*bufferPos+1)%MAXBUFFSIZE;
 	*bufferFill = *bufferFill+1;
 	*seq = (*seq+1)%SEQSPAN;
@@ -160,9 +161,10 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
 }
 /*
 * Vérifie la validité de l'acquis et retourne le numéro de séquence
+* FIXME: le souci vient peut-etre d'ici !!
 */
 int processAck(int *seq, int *bufferFill,int *bufferPos){
-	// TODO : Verifier le CRC
+	// TODO: Verifier le CRC
 	int  newWinSize = ntohs((&ackBuffer)->length);
 	if(newWinSize==0){newWinSize = 1;}
 	if(newWinSize<BUFFSIZE){
