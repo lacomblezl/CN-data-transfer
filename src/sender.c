@@ -88,24 +88,26 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	if (*bufferFill>=BUFFSIZE){
 		Die("Da buffer is-a full");
 	}
-
-	// Remplissage du buffer
-	void *payloadaddress = &(send_buffer[*bufferPos].payload);
-	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
-	send_buffer[*bufferPos].type = PTYPE_DATA;
-	send_buffer[*bufferPos].window = 0;
-	send_buffer[*bufferPos].seqnum = *seq;
-	send_buffer[*bufferPos].length = size;
-    send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
-
-    // Compute CRC
-    uint32_t crc;
-	if(compute_crc(&send_buffer[*bufferPos], &crc)) {
-        Die("Error computing crc");
-    }
-    send_buffer[*bufferPos].crc = htonl(crc);
-
-    // Mise à jour des infos de la window
+	if (window[*bufferPos].seqnum == *seq){
+		size = send_buffer[*bufferPos].length;
+	}
+	else{
+		// Remplissage du buffer
+		void *payloadaddress = &(send_buffer[*bufferPos].payload);
+		ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
+		send_buffer[*bufferPos].type = PTYPE_DATA;
+		send_buffer[*bufferPos].window = 0;
+		send_buffer[*bufferPos].seqnum = *seq;
+		send_buffer[*bufferPos].length = size;
+    		send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
+        	// Compute CRC
+        	uint32_t crc;
+		if(compute_crc(&send_buffer[*bufferPos], &crc)) {
+        		Die("Error computing crc");
+    		}
+        	send_buffer[*bufferPos].crc = htonl(crc);
+	}
+   	 // Mise à jour des infos de la window
 	window[*bufferPos].seqnum = *seq;
 	window[*bufferPos].received = false;
 
@@ -215,8 +217,11 @@ int selectiveRepeat() {
 	int unack = 0;//Numéro de séquence du dernier acquis reçu
 	int bufferFill = 0;//Nombres de packet dans le buffer
 	int bufferPos = 0; // La position dans le buffer du prochain paquet à remplacer
-
-	// TODO : mettre des bonnes valeurs
+	
+	//Initialize window to avoid problems when resizing
+	for(i = 0; i < MAXBUFFSIZE; i++){
+		window[i].seqnum=-1;
+	}
 
 
 	//fd_set readfs; //Set de filedescriptors utilisé par select
