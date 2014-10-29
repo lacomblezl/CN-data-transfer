@@ -25,7 +25,7 @@
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 #define BUFFSIZE 31                 // size of the receiving buffer
-#define MAXSEQ 31
+#define MAXSEQ 255
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4

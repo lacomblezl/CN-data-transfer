@@ -30,7 +30,7 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
-#define MAXSEQ 31
+#define MAXSEQ 255
 #define TIMEOUT 500                 // Timer de chaque paquet en msec
 #define BUFFSIZE 31                 // size of the buffer
 
