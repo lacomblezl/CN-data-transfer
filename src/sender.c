@@ -30,9 +30,10 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
-#define MAXSEQ 255
+#define SEQSPAN 256
 #define TIMEOUT 500                 // Timer de chaque paquet en msec
-#define BUFFSIZE 31                 // size of the buffer
+#define DEFAULTBUFFSIZE 31                 // size of the buffer
+#define MAXBUFFSIZE 31
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
 struct sockaddr_storage src_host;   // source host emitting the packets
@@ -52,8 +53,9 @@ typedef struct slot {
 	clock_t timesent;
 } window_slot;
 
-window_slot window[BUFFSIZE];
-packetstruct send_buffer[BUFFSIZE];
+int BUFFSIZE = DEFAULTBUFFSIZE;
+window_slot window[MAXBUFFSIZE];
+packetstruct send_buffer[MAXBUFFSIZE];
 packetstruct ackBuffer;
 int sock_id;
 int fileDescriptor;
@@ -86,6 +88,7 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	if (*bufferFill>=BUFFSIZE){
 		Die("Da buffer is-a full");
 	}
+
 	// Remplissage du buffer
 	void *payloadaddress = &(send_buffer[*bufferPos].payload);
 	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
@@ -106,26 +109,24 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	window[*bufferPos].seqnum = *seq;
 	window[*bufferPos].received = false;
 	// Mise à jour des variables de description de la fenêtre et de la séquence
-	*bufferPos = (*bufferPos+1)%BUFFSIZE;
+	*bufferPos = (*bufferPos+1)%MAXBUFFSIZE;
 	*bufferFill = *bufferFill+1;
-	*seq = (*seq+1)%MAXSEQ;
-	// TODO changer le contenu de window nécessaire? On utilise pas les numéros de séquence
+	*seq = (*seq+1)%SEQSPAN;
 	return size;
 }
 /*
  * Fonction qui envoie un paquet avec l'index paquetseq
 */
 int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id) {
-	int diff = (seq-paquetseq+MAXSEQ)%MAXSEQ;
+	int diff = (seq-paquetseq+SEQSPAN)%SEQSPAN;
 	if(diff>bufferFill){
 		Die("Yo, you buffers too small fo da shit man");
 	}
-	int packetbufferindex = (bufferPos-diff+BUFFSIZE)%BUFFSIZE;
+	int packetbufferindex = (bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
 	void *bufaddress = &send_buffer[packetbufferindex];
 
     // Send the word to the server
     // TODO: mettre au propre
-	//int lentosend = ntohs(((packetstruct *)bufaddress)->length)+8;
 	ssize_t lensent = send(sock_id, bufaddress, sizeof(packetstruct), 0); // Taille donnée par length +8
 	window[packetbufferindex].timesent=clock();
 
@@ -142,7 +143,7 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq, int sock_id
 * Function that removes all the packets before ackedframe from the buffer
 */
 int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ackedframe){
-	int diff = (seq-ackedframe+1+MAXSEQ)%MAXSEQ;
+	int diff = (seq-ackedframe+1+SEQSPAN)%SEQSPAN;
 	if(diff>*bufferFill){
 		printf("Ack is out of window");
 		return 1;
@@ -150,8 +151,8 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
 	int i = 0;
 	while(i<=*bufferFill-diff){
 			//enlever les paquets acquis du buffer
-			window[(bufferPos-*bufferFill+i+BUFFSIZE)%BUFFSIZE].received = true;
-			*unack=(*unack+1)%MAXSEQ;
+			window[(bufferPos-*bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE].received = true;
+			*unack=(*unack+1)%SEQSPAN;
 			*bufferFill=*bufferFill-1;
 			printf("Unack = %d\n",*unack);
 	}
@@ -160,8 +161,16 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
 /*
 * Vérifie la validité de l'acquis et retourne le numéro de séquence
 */
-int processAck(){
+int processAck(int *seq, int *bufferFill,int *bufferPos){
 	// TODO : Verifier le CRC
+	int  newWinSize = ntohs((&ackBuffer)->length);
+	if(newWinSize==0){newWinSize = 1;}
+	if(newWinSize<BUFFSIZE){
+		int diff = BUFFSIZE-newWinSize;
+		*seq = (*seq-diff+SEQSPAN)%SEQSPAN;
+		*bufferFill = *bufferFill-diff;
+		*bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
+	}
 	int ackseq = (&ackBuffer)->seqnum;
 	return ackseq;
 
@@ -174,7 +183,7 @@ int isTransmitted(ssize_t size,int bufferFill, int bufferPos)
 	int i =0;
 	int allackedwindow = 1;
 	while(i<bufferFill && allackedwindow){
-		allackedwindow = (window[(bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE].received);
+		allackedwindow = (window[(bufferPos-bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE].received);
 		i++;
 	}
 	int istransm = (size!=PAYLOADSIZE) && allackedwindow;
@@ -187,7 +196,7 @@ int timeisover(int bufferFill, int bufferPos){
 	clock_t now = clock();
 	int i;
 	for(i=0;i<bufferFill;i++){
-		int index = (bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE;
+		int index = (bufferPos-bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE;
 		if(window[index].received==false){
 			int diff = (now - window[index].timesent)*1000/CLOCKS_PER_SEC;//msecs
 			if(diff>TIMEOUT){
@@ -213,10 +222,9 @@ int selectiveRepeat() {
 	ssize_t size = PAYLOADSIZE;
 	//La boucle tourne tant qu'il reste du fichier a transmettre
 	while(!isTransmitted(size,bufferFill,bufferPos)) {
-
         // Insertion et envoie de nouveaux frames dans le buffer
 		while (bufferFill<BUFFSIZE && size==PAYLOADSIZE) {
-
+			printf("BufferPos : %d\n BufferFill : %d\n BufferSize : %d\n",bufferPos,bufferFill,BUFFSIZE);
 			size = insert_in_buffer(&seq, &bufferPos, &bufferFill);
 			supersend(bufferPos, bufferFill, seq, seq-1, sock_id);
 		}
@@ -234,7 +242,7 @@ int selectiveRepeat() {
 			}
 		}
 		else {
-			int ackedframe = processAck();
+			int ackedframe = processAck(&seq,&bufferFill,&bufferPos);
 			remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
 		}
 
