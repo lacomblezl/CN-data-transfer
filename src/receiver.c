@@ -263,6 +263,7 @@ int main(int argc, char* argv[]) {
     int bufferFill = 0;     //TODO: nb of real packets received ??
     int idx;                //TODO:index used serveral times in each iteration
     ssize_t size = PAYLOADSIZE;     // Size of the received payload
+    int is_valid;
 
     while(!isReceived(lastPacketReceived,bufferFill,bufferPos)) {
 
@@ -276,10 +277,11 @@ int main(int argc, char* argv[]) {
                 die("Error while receiving packet");
         }
 
-        /* only if the packet is valid */
-        if(packet_valid(&tmp_packet)) {
+        /* only if the packet is valid -  */
+        is_valid = packet_valid(&tmp_packet);
+        if(is_valid == 1) {
 
-            size = ntohs(tmp_packet.length);
+            size = tmp_packet.length;
 
             if(verbose) {
                 printf("Received a %zd-byte data packet (seq %u)\n", size,
@@ -311,9 +313,14 @@ int main(int argc, char* argv[]) {
             }
             // Else, we do nothing and discard it...
         }
+
+        // A fatal error occured when checking the packet
+        if(is_valid == -1){
+            die("Error decoding packet");
+        }
         else {
             if(verbose) {
-                printf("Receivd an unvalid packet!\n");
+                printf("Receivd an unvalid packet (isValid:%u)!\n", is_valid);
             }
         }
 

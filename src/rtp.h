@@ -72,13 +72,16 @@ int connect_up(int sock_id);
 
 /*
  * Computes the CRC given the following data and binds it to result.
- * Returns 0, or -1 if an error was encountered
+ * Returns 0, or -1 if an error was encountered. Packet is NOT modified.
  */
 int compute_crc(packetstruct* packet, uint32_t *result);
 
 
 /*
- * Determine si le packet recu est valide en verifiant son CRC...
- * Retourne true si le packet est valide, false sinon.
+ * Converts the endiannes of the concerned fields and determine if
+ * 'packet' has a valid CRC...
+ * RETURN :
+ *	1 if the packet is valid, 0 if not and -1 in case of an error. 'packet' is
+ *	modified by calling ntohs on the crc and length fields.
  */
-bool packet_valid(packetstruct* packet);
+int packet_valid(packetstruct* packet);

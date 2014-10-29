@@ -93,14 +93,14 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	send_buffer[*bufferPos].window = 0;
 	send_buffer[*bufferPos].seqnum = *seq;
 	send_buffer[*bufferPos].length = size;
-	send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
+    send_buffer[*bufferPos].length = htons(send_buffer[*bufferPos].length);
 
+    // Compute CRC
     uint32_t crc;
 	if(compute_crc(&send_buffer[*bufferPos], &crc)) {
         Die("Error computing crc");
     }
-    //FIXME changer le CRC en big-endian !
-    send_buffer[*bufferPos].crc = crc;
+    send_buffer[*bufferPos].crc = htonl(crc);
 
     // Mise à jour des infos de la window
 	window[*bufferPos].seqnum = *seq;

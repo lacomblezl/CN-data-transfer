@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <zlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #include "rtp.h"
 
@@ -92,8 +93,23 @@ int compute_crc(packetstruct* packet, uint32_t *result) {
  * Checks the packet's CRC after doing an endianness correction
  * TODO: convert endianness !!
  */
-bool packet_valid(packetstruct* packet) {
+int packet_valid(packetstruct* packet) {
 
+    //Convert CRC endianness
+    packet->crc = ntohl(packet->crc);
+
+    // Compute crc and return the comparison result
+    uint32_t crc;
+    if(compute_crc(packet, &crc)) {
+        return -1;
+    }
+
+    // Convert Length
+    packet->length = ntohs(packet->length);
+
+    return (crc == packet->crc);
+
+    /*
     // The number of bytes on which the CRC must be applied
     size_t len = PAYLOADSIZE + 4;
 
@@ -113,7 +129,5 @@ bool packet_valid(packetstruct* packet) {
     free(buffer);
 
     // Check the result
-    return ( (uint32_t) crc == packet->crc);
-
-    return 0;
+    */
 }
