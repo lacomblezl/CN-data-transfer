@@ -27,14 +27,14 @@
 /*
  * Structure decrivant le frame utilise par le protocole
  */
-typedef struct blah {
-	uint8_t type : 3;
-	uint8_t window : 5;
-	uint8_t seqnum : 8;
-	uint16_t length : 16;
+typedef struct __attribute__((__packed__)) {
+	uint8_t window : 5;	// necessary order to respect the specifications !
+	uint8_t type : 3;	// maybe we first define the least significant bits ??
+	uint8_t seqnum;
+	uint16_t length;
 	uint8_t payload[PAYLOADSIZE];
 	uint32_t crc;
-} __attribute__((packed)) packetstruct;
+} packetstruct;
 
 
 /*

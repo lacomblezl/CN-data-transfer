@@ -284,8 +284,8 @@ int main(int argc, char* argv[]) {
             size = tmp_packet.length;
 
             if(verbose) {
-                printf("Received a %zd-byte data packet (seq %u)\n", size,
-                tmp_packet.seqnum);
+                printf("Received a %zd-byte type %u packet (seq %u)\n", size,
+                tmp_packet.type, tmp_packet.seqnum);
             }
 
             // Is the sequence number in the receive window ?

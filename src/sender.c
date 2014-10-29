@@ -92,7 +92,7 @@ int insert_in_buffer(int *seq,int *bufferPos,int *bufferFill) {
 	// Remplissage du buffer
 	void *payloadaddress = &(send_buffer[*bufferPos].payload);
 	ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
-	send_buffer[*bufferPos].type = PTYPE_ACK;
+	send_buffer[*bufferPos].type = PTYPE_DATA;
 	send_buffer[*bufferPos].window = 0;
 	send_buffer[*bufferPos].seqnum = *seq;
 	send_buffer[*bufferPos].length = size;
