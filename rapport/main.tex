@@ -1,0 +1,31 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{todonotes}
+\title{Reliable transfer protocol}
+\begin{document}
+\maketitle
+\section{Implementation}
+First off, a few functions and structures common to the sender and the receiver have been defined : 
+\begin{itemize}
+\item The function packetstruct
+\item The function init\_host
+\item The function compute\_crc
+%% NECESSAIRE ????
+\item The function packet\_valid
+\item \todo{ The structure of a window ?}
+\end{itemize}
+\subsection{The sender}
+After the argument processing determining the options comes the construction of the address and eventually of the socket. 
+This socket being used regularly in the code we made it a global variable.\\
+The main function then delegates the majority of the work to the selective repeat function. In selectiveRepeat we use 4 variables to describe the state of the window \todo{5 avec la size du buffer} \todo{Schema d'explication}. First, seq and unack are relative to the sequence numbers of packets. seq is the sequence number of the next paquet to send, while unack is the sequence number of the last acknowledgement received. The indices of the corresponding packets in the sending buffer would be $bufferPos$ and $bufferPos-bufferFill$, where $bufferFill$ is the number of packets currently in the buffer, all of which have already been sent.\todo{implement larger window}\\
+The function then enters a while loop which only ends if a data chunk with a length smaller than 512 bytes has been read, signifying the end of the file, and if we have received all the acks from the packets we sent(see function isTransmitted).\\
+\subsubsection{Filling the buffer}
+\subsubsection{Receiving and processing acks}
+\subsection{The receiver}
+\section{Performance and limitations}
+\todo{interoperability tests}
+\todo{End of transmission}
+\end{document}

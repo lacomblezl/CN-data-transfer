@@ -1,4 +1,4 @@
-# Object files
+*# Object files
 *.o
 *.ko
 *.obj
@@ -27,3 +27,9 @@
 *.i*86
 *.x86_64
 *.hex
+
+# Latex files
+*.aux
+*.log
+*.pdf
+*.synctex.gz
