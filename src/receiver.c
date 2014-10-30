@@ -164,7 +164,7 @@ int isReceived(int lastack) {
 
 
 /*
- * Formate les options passees au programme
+ * Formats the options
  */
 void map_options(int argc, char **argv, int *opts) {
 
@@ -294,23 +294,25 @@ int main(int argc, char* argv[]) {
                 	    die("Error writing packets to file");
                 	}
 				}
-				else{printf("BufferFill : %d Da receiving buffer is-a full\n",bufferFill);}
+				else{printf("BufferFill : %d The receiving buffer is full\n",bufferFill);}
                 // Send an acknowledgement
                 acknowledge(lastack);
             }
             // Else, we do nothing and discard it...
             else if(verbose) {
-                printf("Received an out-of-window packet (seq:%u)\n", tmp_packet.seqnum);
+                printf("Received an out-of-window packet (seq:%u)(lastack:%d)\n ", tmp_packet.seqnum,lastack);
             }
         }
-        
-        // If the packet is not valid
-        else if(verbose) {
-            printf("Received a corrupted packet !\n");
+        else{
+        	if(verbose){
+        		printf("Received a corrupted packet !\n");
+        	}
+        	acknowledge(lastack);
         }
+        
 
     }
-    // Terminer l'envoi : renvoyer des acquis si le sender continue a envoyer
+    // End of transmission : resend acks if the sender keeps sending data
     int received;
     int timeDiff = EOTDELAY-1;
     int EOTstart = clock();

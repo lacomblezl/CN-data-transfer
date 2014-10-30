@@ -77,12 +77,12 @@ void Die(char* error_msg) {
 
 
 /*
- * Insère les données avec le header et le CRC dans le sending_buffer à la
- * bonne position et retourne la taille des données lues dans le fichier.
- * Modifie 'seq' : incremente de 1
- * Modifie 'bufferPos' : incremente de 1 % BUFFSIZE
- * Modifie 'bufferFIll' : incremente de 1
- * La Window est aussi mise a jour (seqnum=seq et received=false)
+ * Inserts the data with header and crc in the sending_buffer at the right place
+ * and returns the size of the data read in the file
+ * Modifies 'seq' : increments of 1
+ * Modifies 'bufferPos' : increments of 1 % BUFFSIZE
+ * Modifies 'bufferFIll' : incremente de 1
+ * The window is also updated (seqnum=seq and received=false)
  *
  */
 int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
@@ -92,14 +92,14 @@ int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
     }
 
     if (window[*bufferPos].seqnum == *seq) {
-        return send_buffer[*bufferPos].length;
+        return ntohs(send_buffer[*bufferPos].length);
     }
     
     void *payloadaddress = &(send_buffer[*bufferPos].payload);
     
     ssize_t size = read(fileDescriptor, payloadaddress, PAYLOADSIZE);
     
-    // Remplissage du buffer
+    // Filling the buffer
     send_buffer[*bufferPos].type = PTYPE_DATA;
     send_buffer[*bufferPos].window = 0;
     send_buffer[*bufferPos].seqnum = *seq;
@@ -112,11 +112,11 @@ int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
     }
     send_buffer[*bufferPos].crc = htonl(crc);
     
-    // Mise à jour des infos de la window
+    // Updates the window info
     window[*bufferPos].seqnum = *seq;
     window[*bufferPos].received = false;
     
-    // Mise à jour des variables de description de la fenêtre et de la séquence
+    // Updates the description variables of the window and sequence
     *bufferPos = (*bufferPos+1)%MAXBUFFSIZE;
     *bufferFill = *bufferFill+1;
     *seq = (*seq+1)%SEQSPAN;
@@ -125,14 +125,14 @@ int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
 
 
 /*
- * Fonction qui envoie le packet avec 'paquetseq' comme numero de sequence.
- * Ce packet DOIT deja etre dans le buffer !!
+ * Fonction which sends the packet with paquetseq sequence number
+ * (It has to be in the buffer already)
  */
 int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
     
 	int diff = (seq-paquetseq+SEQSPAN)%SEQSPAN;
 	if(diff > bufferFill) {
-		Die("Yo, you buffer'ss too small fo da shit man");
+		Die("");
 	}
 	int packetbufferindex = (bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
 	void *bufaddress = &send_buffer[packetbufferindex];
@@ -146,7 +146,7 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
     
     memcpy(corrupted, bufaddress, sizeof(packetstruct));
     
-    // Choix de ne pas envoyer le packet pour simuler la loss (--splr)
+    // Packet loss simulation(--splr)
     if (random()%100 < opts.splr) {
         window[packetbufferindex].timesent=clock();
         free(corrupted);
@@ -175,8 +175,7 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 	}
     
     free(corrupted);
-
-	// TODO : Wait if receiver unavailable?
+	printf("seqnum du packet : %d",send_buffer[packetbufferindex].seqnum);
 	return lensent;
 }
 
@@ -195,8 +194,8 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
         return 1;
     }
     int i = 0;
+    // Remove acked packets from the buffer
     while(i <= *bufferFill-diff) {
-        //enlever les paquets acquis du buffer
         window[(bufferPos-*bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE].received = true;
         *unack=(*unack+1)%SEQSPAN;
         *bufferFill=*bufferFill-1;
@@ -218,36 +217,25 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
  */
 int processAck(int *seq, int *bufferFill,int *bufferPos) {
     
-    // Check the packet validity and convert packet.length with 'ntohs'
+    // Checks the packet validity and convert packet.length with 'ntohs'
     if(!packet_valid(&ackBuffer)) {
         return -1;
     }
-
     int newWinSize = ackBuffer.window;
-    
     if(newWinSize==0){ newWinSize = 1; }
-    /*
-    if(newWinSize < BUFFSIZE) {
-        int diff = BUFFSIZE-newWinSize;
-        *seq = (*seq-diff+SEQSPAN)%SEQSPAN;
-        *bufferFill = *bufferFill-diff;
-        *bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
-    }
-    int ackseq = (&ackBuffer)->seqnum;
-    */
-    //TODO: ca reste tres nebuleux tout ca...
     return ackBuffer.seqnum;
 }
 
 
 /*
- *	Vérifie que le fichier complet a été transmis
+ * Verifies the whole file has been transmitted
  */
 int isTransmitted(ssize_t size, int bufferFill, int bufferPos) {
     if(!lastseqsent){
     	return 0;
     }
     int lastseqinbuffer = (bufferPos-1+BUFFSIZE)%BUFFSIZE;
+    
     return window[lastseqinbuffer].received;
 }
 
@@ -299,28 +287,26 @@ int selectiveRepeat() {
                                     // idx of the timer that's over
     
     
-    //La boucle tourne tant qu'il reste du fichier a transmettre
+    //Loops while there is something left to transmit
     while(!isTransmitted(size,bufferFill,bufferPos)) {
         
-        // Insertion et envoi de nouveaux frames dans le buffer
+        // Inserts in the buffer and sends new frames
         while (bufferFill < BUFFSIZE && size == PAYLOADSIZE) {
-            
-            //printf("BufferPos : %d\n BufferFill : %d\n",bufferPos,bufferFill);
             size = insert_in_buffer(&seq, &bufferPos, &bufferFill);
             supersend(bufferPos, bufferFill, seq, seq-1);
-            if(size<=PAYLOADSIZE){
-            	lastseqsent = true;
-            }
+            
         }
-        
+        if(size<PAYLOADSIZE){
+
+            	lastseqsent = true;
+        }
         // Acknowledgements reception
-        fcntl(sock_id, F_SETFL, O_NONBLOCK);    // make receive non-blocking
+        fcntl(sock_id, F_SETFL, O_NONBLOCK);
         received =
         recvfrom(sock_id,(void*)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
         
         if(received != sizeof(packetstruct) && errno != EAGAIN) {
-            // The error isn't that nothing was received
-            Die("No packet received");
+            Die("Reception error");
         }
         
         /* updates 'seq', 'bufferFill' and 'bufferPos'. Returns the seq_num
