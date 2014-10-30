@@ -109,8 +109,7 @@ int flush_frames(int fd, int *lastack, int *bufferPos, int *bufferFill) {
  */
 int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
-    //TODO: modulo necessaire ? int diff = (seqnumb-lastack+SEQSPAN)%SEQSPAN;
-    int diff = seqnumb-lastack;
+    int diff = (seqnumb-lastack+SEQSPAN)%SEQSPAN;
 	if(diff <= 0 || diff > BUFFSIZE) {
 		return -1;
 	}
@@ -324,6 +323,9 @@ int main(int argc, char* argv[]) {
                 acknowledge(lastack);
             }
             // Else, we do nothing and discard it...
+            else if(verbose) {
+                printf("Received an out-of-window packet (seq:%u)\n", tmp_packet.seqnum);
+            }
         }
         
         // If the packet is not valid
