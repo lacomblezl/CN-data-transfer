@@ -30,7 +30,7 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
-#define EOTDELAY 5000
+#define EOTDELAY 1000
 
 struct addrinfo *address = NULL;    // address & port we're listening to
 struct addrinfo hints = {
@@ -141,7 +141,7 @@ void acknowledge(int lastack) {
                                 (struct sockaddr *) &src_host, src_len);
     
     if(verbose){
-    	printf(" Ack envoye : %u\n", packet.seqnum);
+    	printf(" Ack sent with seq : %u\n", packet.seqnum);
     }
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
