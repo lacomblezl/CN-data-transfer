@@ -52,7 +52,6 @@ enum host_type {
 	sender = 0,
 	receiver = 1 };
 
-
 /*
  * Initializes the socket needed to communicate on top on UDP.
  * The type is used to specify if the socket should be bound or connected
@@ -69,14 +68,6 @@ enum host_type {
  *	errno is set appropriatly.
  */
 int init_host(struct addrinfo *address, enum host_type type);
-
-
-/* //TODO: corriger les options, specifier et implementer !
- * Tente d'etablir une connection fiable avec l'host specifie, et retourne
-* -1 en cas d'erreur.
- */
-int connect_up(int sock_id);
-
 
 /*
  * Computes the CRC given the following data and binds it to result.

@@ -51,13 +51,6 @@ int init_host(struct addrinfo *address, enum host_type type) {
 }
 
 
-/* Establishes the connection as specified by the protocol */
-int connect_up(int sock_id) {
-    //TODO: routine de negociation du sequence number...
-    return 0;
-}
-
-
 /*
  * Computes the CRC given the following data and binds it to result
  * Returns 0, or -1 if an error was encountered
@@ -106,26 +99,4 @@ int packet_valid(packetstruct* packet) {
     packet->length = ntohs(packet->length);
 
     return (crc == packet->crc);
-
-    /*
-    // The number of bytes on which the CRC must be applied
-    size_t len = PAYLOADSIZE + 4;
-
-    // Allocate space to store the buffer to wich CRC is applied
-    Bytef *buffer = malloc(len*sizeof(Bytef));
-    if(buffer == NULL) {
-        return -1;
-    }
-
-    // Fill buffer with the frame content (not the CRC part) !
-    memcpy((void*) buffer, (void*) packet, len);
-
-    // Compute CRC
-    uLong crc = crc32(0L, Z_NULL, 0);
-    crc = crc32(crc, buffer, len);
-
-    free(buffer);
-
-    // Check the result
-    */
 }
