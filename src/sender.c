@@ -61,12 +61,12 @@ int sock_id;
 int fileDescriptor;
 char *filename;
 
-// TODO: c'est quoi ?
+// Arguments passed to the program
 struct options {
-    char* filename;
-    int sber;
-    int splr;
-    int delay;
+    char* filename;     // The file to send
+    int sber;           // Byte Error Rate [per thousand]
+    int splr;           // Packet Loss Ratio [%]
+    int delay;          // Delay before packet transmission [ms]
 } opts;
 
 /*
@@ -89,14 +89,13 @@ void Die(char* error_msg) {
  * Modifie 'bufferFIll' : incremente de 1
  * La Window est aussi mise a jour (seqnum=seq et received=false)
  *
- * TODO: checker le buffer
  */
 int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
     
     if (*bufferFill >= BUFFSIZE) {
         Die("Da buffer is-a full");
     }
-    //TODO: c'est quoi ce cas ?? Risque de bug pour moi !
+    //TODO: c'est quoi ce cas ??
     if (window[*bufferPos].seqnum == *seq) {
         return send_buffer[*bufferPos].length;
     }
@@ -145,10 +144,35 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 	}
 	int packetbufferindex = (bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
 	void *bufaddress = &send_buffer[packetbufferindex];
+    
+    
+    // A local buffer to corrupt the packet if needed
+    unsigned char* corrupted = malloc(sizeof(packetstruct));
+    if(corrupted == NULL) {
+        Die("Error allocating corrupted buffer");
+    }
+    
+    memcpy(corrupted, bufaddress, sizeof(packetstruct));
+    
+    // Choix de ne pas envoyer le packet pour simuler la loss (--splr)
+    if (random()%100 < opts.splr) {
+        window[packetbufferindex].timesent=clock();
+        return sizeof(packetstruct);
+    }
 
-    // Send the word to the server
-    // TODO: mettre au propre
-	ssize_t lensent = send(sock_id, bufaddress, sizeof(packetstruct), 0);
+    // Simulation of byte errors during transmission (--sber)
+    if (random()%1000 < opts.sber) {
+        corrupted[random()%(PAYLOADSIZE+8)] ^= 0x69;
+    }
+    
+    // TODO: delai a l'envoi (--delay)
+    if(usleep(opts.delay*1000)) {
+        Die("Error while waiting before send");
+    }
+    
+    
+    // Send the packet to the destination
+	ssize_t lensent = send(sock_id, corrupted, sizeof(packetstruct), 0);
 	window[packetbufferindex].timesent=clock();
 
     // FIXME Verbose print
@@ -156,6 +180,8 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 	if(lensent != sizeof(packetstruct)) {
 		Die("Mismatch in number of sent bytes");
 	}
+    
+    free(corrupted);
 
 	// TODO : Wait if receiver unavailable?
 	return lensent;
