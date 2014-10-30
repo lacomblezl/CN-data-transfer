@@ -33,7 +33,6 @@ int init_host(struct addrinfo *address, enum host_type type) {
 
     /* If type is sender, connect socket to the destination */
     if(type == sender) {
-	printf("Address : %s\n",(address->ai_addr)->sa_data);
         if(connect(sock_id, address->ai_addr, address->ai_addrlen)) {
             close(sock_id);
             return -1;
@@ -96,7 +95,6 @@ int packet_valid(packetstruct* packet) {
     if(compute_crc(packet, &crc)) {
         return -1;
     }
-
     // Convert Length
     packet->length = ntohs(packet->length);
 
