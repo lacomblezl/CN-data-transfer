@@ -74,7 +74,7 @@ void die(char *error_msg) {
  * Sets lastack to its new value.
  * TODO: le bufferFill enleve la necessite du received !!
  */
-int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
+int flush_frames(int fd, int *lastack, int *bufferPos, int *bufferFill) {
 
     // iterates over the sliding window slots
 
@@ -109,8 +109,9 @@ int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
  */
 int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
-    int diff = (seqnumb-lastack+SEQSPAN)%SEQSPAN;
-	if(diff<=0 || diff>BUFFSIZE) {
+    //TODO: modulo necessaire ? int diff = (seqnumb-lastack+SEQSPAN)%SEQSPAN;
+    int diff = seqnumb-lastack;
+	if(diff <= 0 || diff > BUFFSIZE) {
 		return -1;
 	}
 	else {
@@ -121,27 +122,28 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
 /*
  * Generates an rtp packet acknowledging the sequence number seqnumb.
- * 'packet' must point to a already allocated packetstruct.
  * FIXME: window de taille fixe pour l'instant
  */
-void acknowledge(int lastack, packetstruct *packet) {
+void acknowledge(int lastack) {
+    
+    packetstruct packet;
 
-	packet->type = PTYPE_ACK;
-	packet->window = BUFFSIZE;
-	packet->seqnum = lastack;
-	packet->length = htons(0);
+	packet.type = PTYPE_ACK;
+	packet.window = BUFFSIZE;
+    packet.seqnum = lastack + 1;    // idx of the next expected packet
+	packet.length = htons(0);
 
     // set the payload to zero
-    memset(packet->payload, 0, PAYLOADSIZE);
+    memset(packet.payload, 0, PAYLOADSIZE);
 
     uint32_t crc;
-    if(compute_crc(packet, &crc)) {
+    if(compute_crc(&packet, &crc)) {
         die("Error computing CRC");
     }
 
-	packet->crc = crc;
+	packet.crc = crc;
 
-	ssize_t lensent = sendto(sock_id,packet,sizeof(packetstruct),0,
+	ssize_t lensent = sendto(sock_id, &packet,sizeof(packetstruct),0,
                                     (struct sockaddr *) &src_host, src_len);
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
@@ -150,8 +152,7 @@ void acknowledge(int lastack, packetstruct *packet) {
 
 
 /*
- * 1 si tout est reçu, 0 sinon
- * TODO: si la size < LENGTH n'etait pas
+ * Checks if all the file content has been received
  * RETURN:
  *      true if the file has entirely been received, false otherwise.
  *
@@ -265,7 +266,7 @@ int main(int argc, char* argv[]) {
     
     packetstruct tmp_packet;           // stores the just received packet
                                        // TODO: uint8_t lastack=SEQSPAN-1;         // last in-sequence acknowledge packet
-    uint8_t lastack = 0;
+    int lastack = -1;
     int bufferPos = 0;                 // Corresponding position in the buffer
                                        // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
     bool lastPacketReceived = false;   // True if a packet with less than 512B
@@ -276,9 +277,9 @@ int main(int argc, char* argv[]) {
     ssize_t size = PAYLOADSIZE;     // Size of the received payload
     int is_valid;
 
-    while(!isReceived(lastPacketReceived,bufferFill,bufferPos)) {
+    while( !isReceived(lastPacketReceived, bufferFill, bufferPos) ) {
 
-        printf("enter while\n");
+        //FIXME: virer printf("enter while\n");
 
         /* blocking receive - we are waiting for a frame */
         src_len = sizeof(src_host);
@@ -288,13 +289,9 @@ int main(int argc, char* argv[]) {
                 die("Error while receiving packet");
         }
 
-        /* only if the packet is valid -  */
         is_valid = packet_valid(&tmp_packet);
-        // A fatal error occured when checking the packet
-        if(is_valid == -1){
-            die("Error decoding packet");
-        }
-
+        
+        /* only if the packet is valid */
         if(is_valid == 1) {
 
             size = tmp_packet.length;
@@ -324,14 +321,14 @@ int main(int argc, char* argv[]) {
                 }
 
                 // Send an acknowledgement
-                acknowledge(lastack,&recv_buffer[idx]);
+                acknowledge(lastack);
             }
             // Else, we do nothing and discard it...
         }
-        else {
-            if(verbose) {
-                printf("Received a corrupted packet !\n");
-            }
+        
+        // If the packet is not valid
+        else if(verbose) {
+            printf("Received a corrupted packet !\n");
         }
 
     }

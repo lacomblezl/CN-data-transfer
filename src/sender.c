@@ -140,7 +140,6 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
     /* TODO: le modulo est vmt necessaire ? Puisque de tte facon, si
      on a paquetseq > seq, ca va dier apres ! */
 	int diff = (seq-paquetseq+SEQSPAN)%SEQSPAN;
-    //TODO: c'est pas bufferFill-1 ??
 	if(diff > bufferFill) {
 		Die("Yo, you buffer'ss too small fo da shit man");
 	}
@@ -173,7 +172,7 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
     int diff = (seq-ackedframe+1+SEQSPAN)%SEQSPAN;
     
     if(diff > *bufferFill) {
-        printf("Ack is out of window");
+        printf("Ack is out of window : (diff=%d), (bufFill=%d), (acked=%d), (seq=%d)\n", diff, *bufferFill, ackedframe, seq);
         return 1;
     }
     int i = 0;
@@ -200,6 +199,7 @@ int processAck(int *seq, int *bufferFill,int *bufferPos) {
     
     // Check the packet validity and convert packet.length with 'ntohs'
     if(!packet_valid(&ackBuffer)) {
+        printf("Received an unvalid packet !\n");
         return -1;
     }
 
@@ -225,7 +225,7 @@ int processAck(int *seq, int *bufferFill,int *bufferPos) {
     *bufferFill = *bufferFill-diff;     // Ah ouais ??
     *bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
     
-    
+    printf("seq Num : %d\n", ackBuffer.seqnum);
     return ackBuffer.seqnum;
 }
 
@@ -272,10 +272,13 @@ int timeisover(int bufferFill, int bufferPos) {
  */
 int selectiveRepeat() {
     
-    int seq = 1;        // Seq number of the last packet to send
+    int seq = 0;        // Seq number of the last packet to send
     int unack = 0;      // FIXME: Numéro de séquence du dernier acquis reçu
     int bufferFill = 0; // Number of packets in the buffer
     int bufferPos = 0;  // Index where to insert next packet in sending buffer
+    
+    // Initialize ack buffer
+    memset(&ackBuffer, 0, sizeof(packetstruct));
     
     // Initialize window to avoid problems when resizing
     int i;
@@ -287,6 +290,7 @@ int selectiveRepeat() {
     ssize_t received;               // Number of bytes received on the socket
     int ackedframe, whichisover;    // last seq numb aknowledged and
                                     // idx of the timer that's over
+    
     
     //La boucle tourne tant qu'il reste du fichier a transmettre
     while(!isTransmitted(size,bufferFill,bufferPos)) {
@@ -315,7 +319,7 @@ int selectiveRepeat() {
          contained in the Ack frame */
         ackedframe = processAck(&seq, &bufferFill, &bufferPos);
         
-        if(ackedframe != 1) {
+        if(ackedframe != -1) {
             
             // Remove acked packets from the buffer
             remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
