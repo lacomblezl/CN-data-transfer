@@ -46,13 +46,6 @@ struct addrinfo hints = {
     .ai_socktype = SOCK_DGRAM,
     .ai_protocol = IPPROTO_UDP };
 
-// sender's window slot definition
-typedef struct slot {
-	uint8_t seqnum;
-    bool received;      //TODO: c'est pas useless ca ??
-	clock_t timesent;
-} window_slot;
-
 int BUFFSIZE = DEFAULTBUFFSIZE;
 window_slot window[MAXBUFFSIZE];
 packetstruct send_buffer[MAXBUFFSIZE];

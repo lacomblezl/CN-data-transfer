@@ -19,7 +19,8 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <zlib.h>
-
+#include <time.h>
+#include <errno.h>
 #include "rtp.h"
 
 
@@ -29,6 +30,7 @@
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
 #define CRCSIZE 4
+#define EOTDELAY 5000
 
 struct addrinfo *address = NULL;    // address & port we're listening to
 struct addrinfo hints = {
@@ -37,12 +39,6 @@ struct addrinfo hints = {
     .ai_protocol = IPPROTO_UDP };
 struct sockaddr_storage src_host;   // source host emitting the packets
 socklen_t src_len;                  // size of the source address
-
-// definition d'un des slots constituant la window
-typedef struct slot {
-    uint8_t seqnum;
-    bool received;
-} window_slot;
 window_slot window[BUFFSIZE];       // The sliding window
 
 int sock_id;                        // The socket used by the program
@@ -72,7 +68,7 @@ void die(char *error_msg) {
  * Flushes the content of receiving buffer to file fd.
  * Updates the window accordingly to accept new sequence numbers.
  * Sets lastack to its new value.
- * TODO: le bufferFill enleve la necessite du received !!
+ * 
  */
 int flush_frames(int fd, int *lastack, int *bufferPos, int *bufferFill) {
 
@@ -121,7 +117,7 @@ int idx_in_window(uint8_t seqnumb, int lastack, int bufferPos) {
 
 /*
  * Generates an rtp packet acknowledging the sequence number seqnumb.
- * FIXME: window de taille fixe pour l'instant
+ *
  */
 void acknowledge(int lastack) {
     
@@ -267,27 +263,23 @@ int main(int argc, char* argv[]) {
     }
     
     packetstruct tmp_packet;           // stores the just received packet
-                                       // TODO: uint8_t lastack=SEQSPAN-1;         // last in-sequence acknowledge packet
-    int lastack = -1;
-    int bufferPos = 0;                 // Corresponding position in the buffer
-                                       // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
+                                       // last in-sequence acknowledge packet
+    int lastack = -1;					// last in-sequence acknowledge packet
+    int bufferPos = 0;                 // Position following lastack in the buffer
     bool lastPacketReceived = false;   // True if a packet with less than 512B
                                        // of paylod has been received.
 
-    int bufferFill = 0;     //TODO: nb of real packets received ??
-    int idx;                //TODO:index used serveral times in each iteration
+    int bufferFill = 0;     //nb of unwritten valid packets received
+    int idx;                //position in the buffer for the received packet
     ssize_t size = PAYLOADSIZE;     // Size of the received payload
     int is_valid;
 
     while( !isReceived(lastPacketReceived, bufferFill, bufferPos) ) {
 
-        //FIXME: virer printf("enter while\n");
-
         /* blocking receive - we are waiting for a frame */
         src_len = sizeof(src_host);
         if(recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
             (struct sockaddr*) &src_host, &(src_len)) != sizeof(packetstruct)) {
-                //TODO: on serait pas plus soft ??
                 die("Error while receiving packet");
         }
 
@@ -312,8 +304,9 @@ int main(int argc, char* argv[]) {
                 /* If this is the last packet from the original file
                  * (ie, payload with a size smaller than 512 Bytes */
                  if(size < PAYLOADSIZE) {
-                     //FIXME: debug print
-                     printf("Smaller PAYLOADSIZE\n");
+                     if(verbose){
+                     	printf("Packet with smaller PAYLOADSIZE received, end of file detected\n");
+                     }
                      lastPacketReceived = true;
                  }
 
@@ -337,8 +330,22 @@ int main(int argc, char* argv[]) {
         }
 
     }
-
-    //sleep(10);// FIXME: Comment terminer l'envoi
+    // Terminer l'envoi : renvoyer des acquis si le sender continue a envoyer
+    int received;
+    int timeDiff = EOTDELAY-1;
+    int EOTstart = clock();
+	while(timeDiff<EOTDELAY){
+		received = 0;
+		fcntl(sock_id, F_SETFL, O_NONBLOCK);    // make receive non-blocking
+        received = recvfrom(sock_id,(void*)(&tmp_packet),sizeof(tmp_packet),0,NULL,NULL);
+        if(received != sizeof(packetstruct) && errno != EAGAIN) {
+            die("Error receiving");
+        }
+        if(received==sizeof(packetstruct)){
+        	acknowledge(lastack);
+        }
+        timeDiff = (clock()-EOTstart)*1000/CLOCKS_PER_SEC;
+    }
     if(verbose) {
         printf("File successfully received\n");
     }
