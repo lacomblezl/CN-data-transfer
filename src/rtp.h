@@ -36,6 +36,14 @@ typedef struct __attribute__((__packed__)) {
 	uint32_t crc;
 } packetstruct;
 
+/*
+* sender's window slot definition
+*/
+typedef struct slot {
+	uint8_t seqnum;
+    bool received;      
+	clock_t timesent;
+} window_slot;
 
 /*
  * Enum qui permet de definir l'host comme sender ou receiver
