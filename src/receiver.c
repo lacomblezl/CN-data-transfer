@@ -72,24 +72,30 @@ void die(char *error_msg) {
  * Flushes the content of receiving buffer to file fd.
  * Updates the window accordingly to accept new sequence numbers.
  * Sets lastack to its new value.
+ * TODO: le bufferFill enleve la necessite du received !!
  */
 int flush_frames(int fd, uint8_t *lastack, int *bufferPos, int *bufferFill) {
 
     // iterates over the sliding window slots
 
 	uint8_t i=0;
+    int length;
 	while(i < BUFFSIZE && window[*bufferPos].received) {
 
-        int length = ntohs(recv_buffer[*bufferPos].length);
+        //int length = ntohs(recv_buffer[*bufferPos].length);
+        length = recv_buffer[*bufferPos].length;
+        
         if(write(fd, &(recv_buffer[*bufferPos].payload), length) != length) {
             return -1;
         }
+        
+        // Free space to welcome another packet
+        window[*bufferPos].received = 0;
+        window[*bufferPos].seqnum = (window[*bufferPos].seqnum+BUFFSIZE)%SEQSPAN;
+        
 		*lastack = (*lastack + 1)%SEQSPAN;
 		*bufferPos = (*bufferPos + 1)%BUFFSIZE;
 		*bufferFill = *bufferFill - 1;
-		window[*bufferPos].received = 0;
-		window[*bufferPos].seqnum =
-                        (window[*bufferPos].seqnum+BUFFSIZE)%SEQSPAN;
 		i++;
     }
 	return 0;
@@ -122,7 +128,7 @@ void acknowledge(int lastack, packetstruct *packet) {
 
 	packet->type = PTYPE_ACK;
 	packet->window = BUFFSIZE;
-	packet->seqnum = (lastack+1); // prochain numéro de séquence attendu
+	packet->seqnum = lastack;
 	packet->length = htons(0);
 
     // set the payload to zero
@@ -216,13 +222,6 @@ void map_options(int argc, char **argv, int *opts) {
 
 int main(int argc, char* argv[]) {
 
-    packetstruct tmp_packet;           // stores the just received packet
-    uint8_t lastack=SEQSPAN-1;         // last in-sequence acknowledge packet
-    int bufferPos = 0;                 // Corresponding position in the buffer
-    // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
-    bool lastPacketReceived = false;   // True if a packet with less than 512B
-                                       // of paylod has been received.
-
     // Checks the program parameters
     int opt;
     map_options(argc, argv, &opt);
@@ -263,6 +262,14 @@ int main(int argc, char* argv[]) {
     if(sock_id == -1) {
         die("Error creating socket");
     }
+    
+    packetstruct tmp_packet;           // stores the just received packet
+                                       // TODO: uint8_t lastack=SEQSPAN-1;         // last in-sequence acknowledge packet
+    uint8_t lastack = 0;
+    int bufferPos = 0;                 // Corresponding position in the buffer
+                                       // TODO : changer en unsigned 8, voir si lastack doit avoir une valeur particulière
+    bool lastPacketReceived = false;   // True if a packet with less than 512B
+                                       // of paylod has been received.
 
     int bufferFill = 0;     //TODO: nb of real packets received ??
     int idx;                //TODO:index used serveral times in each iteration
