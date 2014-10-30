@@ -25,7 +25,7 @@
 
 
 #define IP_PROT PF_INET6            // defines the ip protocol used (IPv6)
-#define BUFFSIZE 31                 // size of the receiving buffer
+#define BUFFSIZE 20                 // size of the receiving buffer
 #define SEQSPAN 256
 #define PAYLOADSIZE 512
 #define HEADERSIZE 4
@@ -46,7 +46,7 @@ packetstruct recv_buffer[BUFFSIZE]; // receiving buffer
 int fd;                             // file descriptor for the output file
 char *filename = NULL;              // file name for the output
 bool verbose;                       // verbose flag to print debug messages
-
+int lastseq = -1;
 
 // Prints the function usage
 void usage() {
@@ -135,14 +135,14 @@ void acknowledge(int lastack) {
     if(compute_crc(&packet, &crc)) {
         die("Error computing CRC");
     }
-	printf(" CRC ack au receiver : %d\n",crc);
 	packet.crc = htonl(crc);
 
 	ssize_t lensent = sendto(sock_id, &packet,sizeof(packetstruct),0,
                                 (struct sockaddr *) &src_host, src_len);
     
-    printf(" Ack envoye : %u\n", packet.seqnum);
-    
+    if(verbose){
+    	printf(" Ack envoye : %u\n", packet.seqnum);
+    }
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
 	}
@@ -155,31 +155,11 @@ void acknowledge(int lastack) {
  *      true if the file has entirely been received, false otherwise.
  *
  * ARGUMENTS:
- *      - last_received : true if a packet smaller than PAYLOAD has been recvd.
- *      - bufferFill : Number of received packet among the seq. numbers in the
-                       the window.
- *      - bufferPos : Index of the sequence number following 'lastack' in
- *                    the receiving window.
+ *      - lastack : true if a packet smaller than PAYLOAD has been recvd.
+ *     
  */
-int isReceived(bool last_received, int bufferFill, int bufferPos) {
-
-    if(!last_received) {
-        return 0;
-    }
-
-    int i =0;
-	int allackedwindow = 1;
-	//printf("\nValeur de bufferFill : %d \n Valeur de size : %d \n Valeur de size!=PAYL : %d \n",bufferFill,(int)size,(size!=PAYLOADSIZE));
-
-    while(i < bufferFill && allackedwindow) {
-		allackedwindow = (window[(bufferPos-bufferFill+i+BUFFSIZE)%BUFFSIZE].received);
-		i++;
-		//printf("Valeur de allacked : %d\n",allackedwindow);
-	}
-	int istransm = allackedwindow;
-
-    //printf("Istransmitted ? : %d\n",istransm);
-    return istransm;
+int isReceived(int lastack) {
+    return (lastack == lastseq);
 }
 
 
@@ -264,18 +244,17 @@ int main(int argc, char* argv[]) {
     
     packetstruct tmp_packet;           // stores the just received packet
                                        // last in-sequence acknowledge packet
-    int lastack = -1;					// last in-sequence acknowledge packet
+    int lastack = SEQSPAN-1;					// last in-sequence acknowledge packet
     int bufferPos = 0;                 // Position following lastack in the buffer
-    bool lastPacketReceived = false;   // True if a packet with less than 512B
+
                                        // of paylod has been received.
 
     int bufferFill = 0;     //nb of unwritten valid packets received
     int idx;                //position in the buffer for the received packet
     ssize_t size = PAYLOADSIZE;     // Size of the received payload
     int is_valid;
-
-    while( !isReceived(lastPacketReceived, bufferFill, bufferPos) ) {
-
+	memset(window,0,BUFFSIZE*sizeof(window_slot));
+    while( !isReceived(lastack) ) {
         /* blocking receive - we are waiting for a frame */
         src_len = sizeof(src_host);
         if(recvfrom(sock_id, (void *) &tmp_packet, sizeof(tmp_packet), 0,
@@ -297,24 +276,25 @@ int main(int argc, char* argv[]) {
 
             // Is the sequence number in the receive window ?
             if((idx = idx_in_window(tmp_packet.seqnum,lastack,bufferPos)) != -1) {
-                recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
-                window[idx].received = true;    // mark the frame as received
-                bufferFill++;                   // add 1 more received packet
+                if(bufferFill<BUFFSIZE && !window[idx].received){
+                	recv_buffer[idx] = tmp_packet;  // copy packet to rcv_buffer
+                	window[idx].received = true;    // mark the frame as received
+                	bufferFill++;                   // add 1 more received packet
+                	/* If this is the last packet from the original file
+                	 * (ie, payload with a size smaller than 512 Bytes */
+                 	if(size < PAYLOADSIZE) {
+                    	 if(verbose){
+                    	 	printf("Packet with smaller PAYLOADSIZE received, end of file detected\n");
+                    	 }
+                    	 lastseq = tmp_packet.seqnum;
+                 	}
 
-                /* If this is the last packet from the original file
-                 * (ie, payload with a size smaller than 512 Bytes */
-                 if(size < PAYLOADSIZE) {
-                     if(verbose){
-                     	printf("Packet with smaller PAYLOADSIZE received, end of file detected\n");
-                     }
-                     lastPacketReceived = true;
-                 }
-
-                // Try to empty the in-sequence received packets
-                if(flush_frames(fd, &lastack, &bufferPos, &bufferFill)) {
-                    die("Error writing packets to file");
-                }
-
+                	// Try to empty the in-sequence received packets
+                	if(flush_frames(fd, &lastack, &bufferPos, &bufferFill)) {
+                	    die("Error writing packets to file");
+                	}
+				}
+				else{printf("BufferFill : %d Da receiving buffer is-a full\n",bufferFill);}
                 // Send an acknowledgement
                 acknowledge(lastack);
             }

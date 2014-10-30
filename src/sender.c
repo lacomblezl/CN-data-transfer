@@ -53,6 +53,7 @@ packetstruct ackBuffer;
 int sock_id;
 int fileDescriptor;
 char *filename;
+bool lastseqsent = 0;
 
 // Arguments passed to the program
 struct options {
@@ -60,6 +61,7 @@ struct options {
     int sber;           // Byte Error Rate [per thousand]
     int splr;           // Packet Loss Ratio [%]
     int delay;          // Delay before packet transmission [ms]
+    int verbose;
 } opts;
 
 /*
@@ -88,7 +90,7 @@ int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
     if (*bufferFill >= BUFFSIZE) {
         Die("Da buffer is-a full");
     }
-    //TODO: c'est quoi ce cas ??
+
     if (window[*bufferPos].seqnum == *seq) {
         return send_buffer[*bufferPos].length;
     }
@@ -125,12 +127,9 @@ int insert_in_buffer(int *seq, int *bufferPos, int *bufferFill) {
 /*
  * Fonction qui envoie le packet avec 'paquetseq' comme numero de sequence.
  * Ce packet DOIT deja etre dans le buffer !!
- * FIXME: virer -- used : supersend(bufferPos, bufferFill, seq, seq-1);
  */
 int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
     
-    /* TODO: le modulo est vmt necessaire ? Puisque de tte facon, si
-     on a paquetseq > seq, ca va dier apres ! */
 	int diff = (seq-paquetseq+SEQSPAN)%SEQSPAN;
 	if(diff > bufferFill) {
 		Die("Yo, you buffer'ss too small fo da shit man");
@@ -150,6 +149,7 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
     // Choix de ne pas envoyer le packet pour simuler la loss (--splr)
     if (random()%100 < opts.splr) {
         window[packetbufferindex].timesent=clock();
+        free(corrupted);
         return sizeof(packetstruct);
     }
 
@@ -158,8 +158,9 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
         corrupted[random()%(PAYLOADSIZE+8)] ^= 0x69;
     }
     
-    // TODO: delai a l'envoi (--delay)
+	//Delaying
     if(usleep(opts.delay*1000)) {
+    	free(corrupted);
         Die("Error while waiting before send");
     }
     
@@ -168,10 +169,9 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 	ssize_t lensent = send(sock_id, corrupted, sizeof(packetstruct), 0);
 	window[packetbufferindex].timesent=clock();
 
-    // FIXME Verbose print
-	//printf("Packet sent with sequence number %d, %d bytes \n",window[packetbufferindex].seqnum,(int)lensent);
 	if(lensent != sizeof(packetstruct)) {
-		Die("Mismatch in number of sent bytes");
+		free(corrupted);
+		Die("Error sending packets");
 	}
     
     free(corrupted);
@@ -183,15 +183,15 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 
 /*
  * Function that removes all the packets before ackedframe from the buffer
- * FIXME: la valeur de retour sert a quoi ??
- * FIXME: le noeud du prob a l'air d'etre ici !!
  */
 int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ackedframe) {
     
     int diff = (seq-ackedframe+1+SEQSPAN)%SEQSPAN;
     
     if(diff > *bufferFill) {
-        printf("Ack is out of window : (diff=%d), (bufFill=%d), (acked=%d), (seq=%d)\n", diff, *bufferFill, ackedframe, seq);
+        if(opts.verbose){
+        	printf("Ack is out of window : (diff=%d), (bufFill=%d), (acked=%d), (seq=%d)\n", diff, *bufferFill, ackedframe, seq);
+        }
         return 1;
     }
     int i = 0;
@@ -200,7 +200,9 @@ int remv_from_buffer(int bufferPos, int *bufferFill, int seq, int *unack, int ac
         window[(bufferPos-*bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE].received = true;
         *unack=(*unack+1)%SEQSPAN;
         *bufferFill=*bufferFill-1;
-        printf("Unack = %d\n",*unack);
+        if(opts.verbose){
+        	printf("Last unacked frame = %d\n",*unack);
+        }
     }
     
     return 1;
@@ -218,33 +220,22 @@ int processAck(int *seq, int *bufferFill,int *bufferPos) {
     
     // Check the packet validity and convert packet.length with 'ntohs'
     if(!packet_valid(&ackBuffer)) {
-        printf("Received an unvalid packet !\n");
         return -1;
     }
 
     int newWinSize = ackBuffer.window;
     
     if(newWinSize==0){ newWinSize = 1; }
-    
-    //TODO: je trouve ca plus beau comme ca...
-//    if(newWinSize < BUFFSIZE) {
-//        int diff = BUFFSIZE-newWinSize;
-//        *seq = (*seq-diff+SEQSPAN)%SEQSPAN;
-//        *bufferFill = *bufferFill-diff;
-//        *bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
-//    }
-//    int ackseq = (&ackBuffer)->seqnum;
-    
-    //TODO: ca reste tres nebuleux tout ca...
-    if(newWinSize > BUFFSIZE) {
-        return -1;
+    /*
+    if(newWinSize < BUFFSIZE) {
+        int diff = BUFFSIZE-newWinSize;
+        *seq = (*seq-diff+SEQSPAN)%SEQSPAN;
+        *bufferFill = *bufferFill-diff;
+        *bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
     }
-    int diff = BUFFSIZE-newWinSize;
-    *seq = (*seq-diff+SEQSPAN)%SEQSPAN;
-    *bufferFill = *bufferFill-diff;     // Ah ouais ??
-    *bufferPos = (*bufferPos-diff+MAXBUFFSIZE)%MAXBUFFSIZE;
-    
-    printf("seq Num : %d\n", ackBuffer.seqnum);
+    int ackseq = (&ackBuffer)->seqnum;
+    */
+    //TODO: ca reste tres nebuleux tout ca...
     return ackBuffer.seqnum;
 }
 
@@ -253,15 +244,11 @@ int processAck(int *seq, int *bufferFill,int *bufferPos) {
  *	Vérifie que le fichier complet a été transmis
  */
 int isTransmitted(ssize_t size, int bufferFill, int bufferPos) {
-    
-    int i =0;
-    int allackedwindow = 1;
-    while(i < bufferFill && allackedwindow) {
-        allackedwindow = (window[(bufferPos-bufferFill+i+MAXBUFFSIZE)%MAXBUFFSIZE].received);
-        i++;
+    if(!lastseqsent){
+    	return 0;
     }
-    int istransm = (size < PAYLOADSIZE) && allackedwindow;
-    return istransm;
+    int lastseqinbuffer = (bufferPos-1+BUFFSIZE)%BUFFSIZE;
+    return window[lastseqinbuffer].received;
 }
 
 
@@ -292,7 +279,7 @@ int timeisover(int bufferFill, int bufferPos) {
 int selectiveRepeat() {
     
     int seq = 0;        // Seq number of the last packet to send
-    int unack = 0;      // FIXME: Numéro de séquence du dernier acquis reçu
+    int unack = 0;      // Numéro de séquence du dernier acquis reçu
     int bufferFill = 0; // Number of packets in the buffer
     int bufferPos = 0;  // Index where to insert next packet in sending buffer
     
@@ -318,11 +305,12 @@ int selectiveRepeat() {
         // Insertion et envoi de nouveaux frames dans le buffer
         while (bufferFill < BUFFSIZE && size == PAYLOADSIZE) {
             
-            // FIXME: debug print
-            //printf("BufferPos : %d\n BufferFill : %d\n BufferSize : %d\n",bufferPos,bufferFill,BUFFSIZE);
-            printf("BufferPos : %d\n BufferFill : %d\n",bufferPos,bufferFill);
+            //printf("BufferPos : %d\n BufferFill : %d\n",bufferPos,bufferFill);
             size = insert_in_buffer(&seq, &bufferPos, &bufferFill);
             supersend(bufferPos, bufferFill, seq, seq-1);
+            if(size<=PAYLOADSIZE){
+            	lastseqsent = true;
+            }
         }
         
         // Acknowledgements reception
@@ -343,12 +331,17 @@ int selectiveRepeat() {
                 
                 // Remove acked packets from the buffer
                 remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
+                if(opts.verbose){
+            		printf("Ack received : sequence number %d\n",ackedframe);
+            	}
             }
         }
         
         // Timers management
         if((whichisover = timeisover(bufferFill,bufferPos)) != -1) {
-            printf("Time is over! : %d\n", whichisover);
+            if(opts.verbose){
+            	printf("Packet resent : Timer expired for packet with seq %d\n", whichisover);
+            }
             supersend(bufferPos,bufferFill, seq, whichisover);
         }
         
@@ -379,6 +372,7 @@ void map_options(int argc, char **argv, int *opt_count) {
     opts.sber = 0;
     opts.splr = 0;
     opts.delay = 0;
+    opts.verbose = 0;
 
     /* options descriptor */
     static struct option longopts[] = {
@@ -386,7 +380,8 @@ void map_options(int argc, char **argv, int *opt_count) {
         {"sber",   required_argument,    NULL,     's'},
         {"splr",   required_argument,    NULL,     'S'},
         {"delay",  required_argument,    NULL,     'd'},
-        { NULL,    0,                    NULL,     0 }
+        {"verbose", no_argument, NULL, 'v'},
+        { NULL,    0,                    NULL,     0 },
     };
 
     int ch;
@@ -407,7 +402,9 @@ void map_options(int argc, char **argv, int *opt_count) {
         case 'd':
             opts.delay = atoi(optarg);
             break;
-
+		case 'v':
+			opts.verbose = true;
+			break;
         default:
             usage();
         }
@@ -446,14 +443,14 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-    //FIXME: debug print !
-    printf("Sending on address %s - port %s\n", addr_str, port_str);
-    printf("Parameters values :\n");
-    printf("\tfd : %d\n", fileDescriptor);
-    printf("\tsber (percent): %d\n", opts.sber);
-    printf("\tsplr (percent): %d\n", opts.splr);
-    printf("\tdelay (ms) : %d\n", opts.delay);
-
+	if(opts.verbose){
+    	printf("Sending on address %s - port %s\n", addr_str, port_str);
+    	printf("Parameters values :\n");
+    	printf("\tfd : %d\n", fileDescriptor);
+    	printf("\tsber (percent): %d\n", opts.sber);
+    	printf("\tsplr (percent): %d\n", opts.splr);
+    	printf("\tdelay (ms) : %d\n", opts.delay);
+	}
 
     // Resolve the address passed to the program
 	int result;
