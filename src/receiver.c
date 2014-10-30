@@ -143,7 +143,10 @@ void acknowledge(int lastack) {
 	packet.crc = htonl(crc);
 
 	ssize_t lensent = sendto(sock_id, &packet,sizeof(packetstruct),0,
-                                    (struct sockaddr *) &src_host, src_len);
+                                (struct sockaddr *) &src_host, src_len);
+    
+    printf(" Ack envoye : %u\n", packet.seqnum);
+    
 	if(lensent != sizeof(packetstruct)) {
 		die("Mismatch in number of sent bytes");
 	}

@@ -31,7 +31,7 @@
 #define HEADERSIZE 4
 #define CRCSIZE 4
 #define SEQSPAN 256
-#define TIMEOUT 500                 // Timer de chaque paquet en msec
+#define TIMEOUT 100                 // Timer de chaque paquet en msec
 #define DEFAULTBUFFSIZE 31          // size of the buffer
 #define MAXBUFFSIZE 31
 
@@ -310,6 +310,7 @@ int selectiveRepeat() {
     int i;
     for(i = 0; i < MAXBUFFSIZE; i++) {
         window[i].seqnum=-1;
+        window[i].received=true;
     }
     
     ssize_t size = PAYLOADSIZE;     // PAYLOAD size of last packet inserted
@@ -334,7 +335,7 @@ int selectiveRepeat() {
         // Acknowledgements reception
         fcntl(sock_id, F_SETFL, O_NONBLOCK);    // make receive non-blocking
         received =
-            recvfrom(sock_id,(void*)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
+        recvfrom(sock_id,(void*)(&ackBuffer),sizeof(ackBuffer),0,NULL,NULL);
         
         if(received != sizeof(packetstruct) && errno != EAGAIN) {
             // The error isn't that nothing was received
@@ -343,21 +344,20 @@ int selectiveRepeat() {
         
         /* updates 'seq', 'bufferFill' and 'bufferPos'. Returns the seq_num
          contained in the Ack frame */
-	if(received==sizeof(packetstruct)){
-	        ackedframe = processAck(&seq, &bufferFill, &bufferPos);
-	        if(ackedframe != -1) {
-            
-            // Remove acked packets from the buffer
-            remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
-            
-            // Timers management
-            while((whichisover = timeisover(bufferFill,bufferPos)) != -1) {
-                //printf("Time is over! : %d\n",whichisover);
-                supersend(bufferPos,bufferFill, seq, whichisover);
+        if(received==sizeof(packetstruct)) {
+            ackedframe = processAck(&seq, &bufferFill, &bufferPos);
+            if(ackedframe != -1) {
+                
+                // Remove acked packets from the buffer
+                remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
             }
         }
-	}
         
+        // Timers management
+        if((whichisover = timeisover(bufferFill,bufferPos)) != -1) {
+            printf("Time is over! : %d\n", whichisover);
+            supersend(bufferPos,bufferFill, seq, whichisover);
+        }
         
     }
     printf("File successfully transmitted !\n");
