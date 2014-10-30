@@ -317,9 +317,9 @@ int selectiveRepeat() {
         
         /* updates 'seq', 'bufferFill' and 'bufferPos'. Returns the seq_num
          contained in the Ack frame */
-        ackedframe = processAck(&seq, &bufferFill, &bufferPos);
-        
-        if(ackedframe != -1) {
+	if(received==sizeof(packetstruct)){
+	        ackedframe = processAck(&seq, &bufferFill, &bufferPos);
+	        if(ackedframe != -1) {
             
             // Remove acked packets from the buffer
             remv_from_buffer(bufferPos, &bufferFill, seq, &unack, ackedframe);
@@ -330,6 +330,9 @@ int selectiveRepeat() {
                 supersend(bufferPos,bufferFill, seq, whichisover);
             }
         }
+	}
+        
+        
     }
     printf("File successfully transmitted !\n");
     return EXIT_SUCCESS;

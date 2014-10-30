@@ -140,8 +140,8 @@ void acknowledge(int lastack) {
     if(compute_crc(&packet, &crc)) {
         die("Error computing CRC");
     }
-
-	packet.crc = crc;
+	printf(" CRC ack au receiver : %d\n",crc);
+	packet.crc = htonl(crc);
 
 	ssize_t lensent = sendto(sock_id, &packet,sizeof(packetstruct),0,
                                     (struct sockaddr *) &src_host, src_len);
