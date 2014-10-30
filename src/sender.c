@@ -175,7 +175,6 @@ int supersend(int bufferPos, int bufferFill, int seq, int paquetseq) {
 	}
     
     free(corrupted);
-	printf("seqnum du packet : %d",send_buffer[packetbufferindex].seqnum);
 	return lensent;
 }
 
